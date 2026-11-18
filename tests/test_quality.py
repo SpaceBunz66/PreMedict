@@ -13,7 +13,8 @@ CFG = yaml.safe_load((Path(__file__).parents[1] / 'configs' / 'base.yaml').read_
 END = pd.Timestamp('2026-06-07')  # Chủ nhật
 DAYS = pd.date_range(end=END, periods=800)
 BAD = {'gappy': 'coverage', 'gap': 'gap', 'small': 'volume', 'collapse': 'collapse', 'outliers': 'outliers',
-       'shift': 'level_shift', 'stopped': 'active', 'young': 'history', 'nocoord': 'coords'}
+       'shift': 'level_shift', 'stopped': 'active', 'young': 'history', 'nocoord': 'coords',
+       'placeholder': 'coords', 'otherprov': 'coords'}
 
 
 def tong(kind):
@@ -59,9 +60,12 @@ def result():
     raw.loc[s & (raw.ds < '2025-06-25'), 'ma_tinh'] = '34'
     raw = pd.concat([raw, raw[both].assign(ma_tinh='34')], ignore_index=True)
 
-    fac = pd.DataFrame({'ma_bv': kinds, 'ten_bv': kinds, 'tuyen_bv': '3', 'hang_bv': '3',
-                        'latitude': 21.0, 'longitude': 106.0})
+    i = np.arange(len(kinds))
+    fac = pd.DataFrame({'ma_bv': kinds, 'ten_bv': kinds, 'ma_tinh': '24', 'tuyen_bv': '3', 'hang_bv': '3',
+                        'latitude': 21.03 + 0.0011 * i, 'longitude': 106.07 + 0.0013 * i})  # cụm CSYT tỉnh 24
     fac.loc[fac.ma_bv == 'nocoord', 'latitude'] = np.nan
+    fac.loc[fac.ma_bv == 'placeholder', ['latitude', 'longitude']] = [21.0, 106.0]
+    fac.loc[fac.ma_bv == 'otherprov', 'ma_tinh'] = '01'  # khai tỉnh 01 nhưng nằm giữa cụm tỉnh 24
     return quality.evaluate(raw, fac, CFG)
 
 

@@ -22,6 +22,7 @@ quality:                    # đánh giá trên window_days ngày cuối, tính 
   min_history_days: 365
   lat: [8, 24]
   lon: [102, 110]
+  coord_neighbors: 10       # tọa độ sai tỉnh: không CSYT nào cùng tỉnh trong 10 CSYT gần nhất
   relaxed:                  # tầng nới, giữ sẵn để mở rộng (~430 CSYT)
     min_workday_coverage: 0.90
 

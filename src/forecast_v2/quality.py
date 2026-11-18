@@ -1,4 +1,5 @@
 """P1: chấm chất lượng từng CSYT và chọn tập train (plan §P1). Xuất quality_report.parquet và audit.md."""
+import numpy as np
 import pandas as pd
 
 from forecast_v2 import clean
@@ -53,13 +54,39 @@ def checks(m, t):
     })
 
 
+def neighbor_share(lat, lon, tinh, k):
+    """Tỉ lệ trong k CSYT gần nhất (trừ chính nó) có cùng mã tỉnh. 0 = tọa độ nằm lọt trong vùng của tỉnh khác."""
+    lat, lon, tinh = (np.asarray(a) for a in (lat, lon, tinh))
+    k = min(k, len(lat) - 1)
+    if k < 1:
+        return np.full(len(lat), np.nan)
+    out = []
+    for i in range(0, len(lat), 1000):  # theo khối: ma trận khoảng cách 1000 × n
+        j = slice(i, i + 1000)
+        d = (lat[j, None] - lat) ** 2 + ((lon[j, None] - lon) * np.cos(np.radians(lat[j, None]))) ** 2
+        d[np.arange(len(d)), np.arange(i, i + len(d))] = np.inf
+        out.append((tinh[np.argpartition(d, k - 1, axis=1)[:, :k]] == tinh[j, None]).mean(axis=1))
+    return np.concatenate(out)
+
+
 def _facilities(fac, q):
-    """Một dòng cho mỗi ma_bv, ưu tiên dòng có tọa độ hợp lệ và có tuyến."""
+    """Một dòng cho mỗi ma_bv, ưu tiên dòng có tọa độ hợp lệ và có tuyến.
+
+    Tọa độ hợp lệ: trong khung lat/lon, không phải tọa độ điền tạm (cả hai là bội của 0,1°, vd. (21,0; 105,0) dùng chung
+    cho 34 CSYT), và có ít nhất 1 CSYT cùng tỉnh trong coord_neighbors CSYT gần nhất của dm_coso_kcb.
+    """
     fac = fac.assign(ma_bv=fac.ma_bv.astype(str))
-    fac['coords_ok'] = (fac.latitude.between(*q['lat']) & fac.longitude.between(*q['lon'])
+    inrange = fac.latitude.between(*q['lat']) & fac.longitude.between(*q['lon'])
+    tenth = lambda x: (x * 10).round(6) % 1 == 0
+    placeholder = tenth(fac.latitude) & tenth(fac.longitude)
+    ref = inrange & ~placeholder & fac.ma_tinh.notna()
+    fac['province_share'] = np.nan  # NaN: không xét được (thiếu tọa độ/mã tỉnh)
+    fac.loc[ref, 'province_share'] = neighbor_share(fac.latitude[ref], fac.longitude[ref],
+                                                    fac.ma_tinh[ref].astype(str), q['coord_neighbors'])
+    fac['coords_ok'] = (inrange & ~placeholder & fac.province_share.ne(0)
                         & fac.tuyen_bv.fillna('').str.strip().ne('')).astype(bool)
     return (fac.sort_values('coords_ok', ascending=False).drop_duplicates('ma_bv').set_index('ma_bv')
-            [['ten_bv', 'tuyen_bv', 'hang_bv', 'latitude', 'longitude', 'coords_ok']])
+            [['ten_bv', 'tuyen_bv', 'hang_bv', 'latitude', 'longitude', 'province_share', 'coords_ok']])
 
 
 def evaluate(raw, facilities, cfg):
