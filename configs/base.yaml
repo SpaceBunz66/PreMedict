@@ -25,6 +25,10 @@ quality:                    # đánh giá trên window_days ngày cuối, tính 
   relaxed:                  # tầng nới, giữ sẵn để mở rộng (~430 CSYT)
     min_workday_coverage: 0.90
 
+facilities:
+  large_tuyen: ['1', '2']   # tuyến dùng bán kính lớn
+  radius_km: {large: 12, small: 6}
+
 fields:
   direct: [tong, luot_kham, ngoai_tru, noi_tru, cap_cuu]
   derived: [bhyt, luot_vao, luot_ra, dung_tuyen, trai_tuyen]
