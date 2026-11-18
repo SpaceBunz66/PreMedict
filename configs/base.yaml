@@ -29,6 +29,15 @@ facilities:
   large_tuyen: ['1', '2']   # tuyến dùng bán kính lớn
   radius_km: {large: 12, small: 6}
 
+weather:
+  start: '2020-12'          # đủ 28 ngày trước 01/2021 cho tổng mưa 28 ngày
+  end: '2026-07'            # tới hết horizon 30 ngày sau ngày cuối có dữ liệu (07/06/2026)
+  clim_years: [2011, 2025]  # khí hậu nền (ERA5-Land monthly means)
+  margin_deg: 0.3
+  radii_km: [5, 6, 7, 10, 12, 15]   # mặc định 6/12 + ablation {5,7} và {10,15}
+  parallel: 3               # số request CDS chạy song song
+  thresholds: {cold: 15, severe_cold: 13, hot: 35, very_hot: 37, heavy_rain: 50}  # °C, mm
+
 fields:
   direct: [tong, luot_kham, ngoai_tru, noi_tru, cap_cuu]
   derived: [bhyt, luot_vao, luot_ra, dung_tuyen, trai_tuyen]
