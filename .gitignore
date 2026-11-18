@@ -1,0 +1,15 @@
+# Dữ liệu trích từ DB (số liệu y tế) và kết quả chạy: chỉ để local, không commit
+data/
+runs/
+artifacts/
+
+# Môi trường và bí mật
+.venv*/
+.env
+.cdsapirc
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/

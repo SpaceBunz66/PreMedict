@@ -1,0 +1,31 @@
+# Ngưỡng theo plan §P1. Sửa ở đây rồi chạy lại: python -m forecast_v2.cli quality
+clean:
+  last_day_min_share: 0.5   # ngày cuối có dữ liệu: số CSYT báo cáo >= 50% mức thường của cùng thứ
+  open_weekday_share: 0.5   # CSYT "thường mở" vào một thứ nếu >= 50% ngày thứ đó có tong > 0
+  rampup_days: 28           # mask các ngày đầu CSYT lên hệ thống
+  tet_window: [-7, 10]      # ngày quanh mùng 1 Tết: không tính là ngày làm việc, không xét ngoại lai
+  outlier_z: 7              # chỉ mask ngày lệch cực lớn; z = 3.5 bắt cả đợt tăng thật (~3% số ngày)
+  etl_break_drop: 0.5       # tháng gãy ETL: tỉ lệ chỉ tiêu/tong giảm > 50% so với median 12 tháng trước
+
+quality:                    # đánh giá trên window_days ngày cuối, tính tới ngày cuối có dữ liệu
+  window_days: 365
+  min_workday_coverage: 0.95
+  max_workday_gap: 5        # chuỗi ngày làm việc liên tiếp tong = 0 dài nhất
+  min_month_median: 300
+  min_year_total: 3600
+  min_month_ratio: 0.30     # không tháng nào (trừ tháng Tết, tháng không trọn) < 30% median tháng
+  # Nới 18/11/2026 (từ 1% và [0.5, 1.5]): tập chặt 83 -> 141 CSYT. Bảng so sánh các mức: plan §P1.
+  max_outlier_ratio: 0.02
+  level_shift_up: 2.0       # median 3 tháng sau / 3 tháng trước nằm ngoài [0.4, 2.0] là level shift
+  level_shift_down: 0.4
+  max_days_since_last: 14
+  min_history_days: 365
+  lat: [8, 24]
+  lon: [102, 110]
+  relaxed:                  # tầng nới, giữ sẵn để mở rộng (~430 CSYT)
+    min_workday_coverage: 0.90
+
+fields:
+  direct: [tong, luot_kham, ngoai_tru, noi_tru, cap_cuu]
+  derived: [bhyt, luot_vao, luot_ra, dung_tuyen, trai_tuyen]
+  min_month_median: 30      # bỏ cặp CSYT × chỉ tiêu có median tháng < 30

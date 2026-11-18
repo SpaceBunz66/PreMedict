@@ -1,0 +1,11 @@
+# Gói cho P0–P1. torch (CPU), neuralforecast, lightgbm, prophet, xarray, netCDF4, cdsapi, optuna thêm ở P3/P6.
+# Chỉ dùng bản đã phát hành >= 2 tuần:
+#   pip install --uploaded-prior-to <ngày hôm nay - 14 ngày> -r requirements-ml.txt && pip install -e .
+# pandas<3: chưa xác nhận neuralforecast/prophet chạy với pandas 3.
+numpy==2.4.6
+pandas==2.3.3
+pyarrow==26.0.1
+psycopg2-binary==2.9.13
+PyYAML==6.0.3
+holidays==0.108
+pytest==9.2.0
