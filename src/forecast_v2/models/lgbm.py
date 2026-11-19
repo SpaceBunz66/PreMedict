@@ -1,0 +1,105 @@
+"""LightGBM direct multi-horizon (plan §P6): một model cho mọi chuỗi và mọi h, h là một feature.
+
+Mỗi mẫu = (chuỗi, gốc t, h). Feature tại gốc chỉ dùng y tới t: lag, rolling, xu hướng, số ngày từ lần khác 0, khí tượng
+quan trắc (w_*, đã trễ 5 ngày). Feature tại ngày đích d = t + h: lịch, lễ, khí hậu, giá trị cùng thứ gần nhất (tới t),
+giá trị cùng tet_offset năm trước (ngoài cửa sổ Tết: cùng thứ năm trước, d − 364).
+Mọi feature theo y và target chia cho `level` (trung bình 28 ngày có mask = 1 tới gốc), trọng số mẫu = level: loss
+tính theo đơn vị gốc, khớp WAPE, mà cây không phải học lại quy mô của từng CSYT. y có mask = 0 coi như thiếu (NaN).
+q10/q90: model phân vị riêng (ít vòng hơn q50).
+"""
+import lightgbm as lgb
+import numpy as np
+import pandas as pd
+
+from forecast_v2.calendar_vn import tet_days
+
+LAGS = [0, 1, 2, 3, 4, 5, 6, 13, 20, 27]
+WINDOWS = [7, 14, 28, 56]
+NOT_TARGET = ['unique_id', 'csyt_id', 'field', 'ds', 'y', 'available_mask']  # còn lại (trừ w_*): covariate tại ngày đích
+STATIC = ['field', 'tuyen', 'hang', 'latitude', 'longitude', 'log_scale', 'weekend_open']
+
+
+def origin_features(df):
+    """Feature của mỗi dòng khi dòng đó là gốc t. df: sắp theo (unique_id, ds), mỗi chuỗi là lịch ngày liên tục."""
+    ym = df.y.where(df.available_mask > 0)
+    g = ym.groupby(df.unique_id)
+    roll = lambda w, how, mp: g.transform(lambda s: getattr(s.rolling(w, min_periods=mp), how)())
+    level = roll(28, 'mean', 7).fillna(roll(365, 'mean', 1)).clip(lower=1)  # tháng bị mask cả tháng: lùi về 365 ngày
+    f = {'level': level}
+    for k in LAGS:
+        f[f'lag{k}'] = g.shift(k) / level
+    for w in WINDOWS:
+        f[f'mean{w}'] = roll(w, 'mean', w // 2) / level
+        f[f'median{w}'] = roll(w, 'median', w // 2) / level
+        f[f'std{w}'] = roll(w, 'std', w // 2) / level
+    f['trend7_28'] = f['mean7'] / f['mean28']
+    f['days_since_nz'] = (df.ds - df.ds.where(df.y > 0).groupby(df.unique_id).ffill()).dt.days
+    f.update({k: df[k] for k in df if k.startswith('w_')})
+    return pd.DataFrame(f).astype('float32')
+
+
+def last_year_shift(df):
+    """Số ngày lùi về 'cùng thời điểm năm trước' của mỗi dòng: trong ±30 ngày quanh Tết thì theo tet_offset, ngoài ra 364."""
+    o = df.tet_offset.to_numpy()
+    near = np.abs(o) <= 30
+    tet = df.ds - pd.to_timedelta(np.where(near, o, 0), unit='D')
+    years = tet.dt.year
+    prev = pd.Series(tet_days(range(years.min() - 1, years.max())), index=range(years.min(), years.max() + 1))
+    gap = (tet - years.map(prev)).dt.days.to_numpy()
+    return np.where(near, gap, 364)
+
+
+def design(df, static, cutoff, horizon, step):
+    """(X, y/level, level, mẫu train, mẫu dự báo). Gốc train: cutoff − step·k (k ≥ 1) với đích ≤ cutoff, mask đích = 1;
+    gốc dự báo: cutoff, h = 1..horizon."""
+    df = df.sort_values(['unique_id', 'ds']).reset_index(drop=True)
+    of = origin_features(df)
+    off = df.groupby('unique_id').cumcount().to_numpy()  # vị trí trong chuỗi
+    ym = df.y.where(df.available_mask > 0).to_numpy('float32')
+    lag = (cutoff - df.ds).dt.days.to_numpy()
+    origins = np.flatnonzero((lag >= 0) & (lag % step == 0) & (off >= 28))
+    h = np.tile(np.arange(1, horizon + 1), len(origins))
+    i = np.repeat(origins, horizon)
+    t = i + h  # mỗi chuỗi kéo dài tới cutoff + horizon (features.fold) nên đích luôn cùng chuỗi
+    keep = (lag[i] == 0) | ((lag[t] >= 0) & (df.available_mask.to_numpy()[t] > 0))
+    i, t, h = i[keep], t[keep], h[keep]
+    assert (off[t] == off[i] + h).all(), 'ngày đích nằm ngoài chuỗi: fold phải kéo dài tới cutoff + horizon'
+
+    lv = of.level.to_numpy()[i]
+    def back(k):  # y (mask = 1) cách ngày đích k ngày, chia level; k >= h nên luôn ở tại hoặc trước gốc
+        j = t - k
+        return np.where(off[t] >= k, ym[np.clip(j, 0, None)], np.nan) / lv
+    week = 7 * np.ceil(h / 7).astype(int)
+    target = [k for k in df if k not in NOT_TARGET and not k.startswith('w_')]
+    st = static.set_index('unique_id')[STATIC]
+    X = pd.concat([of.iloc[i].reset_index(drop=True).drop(columns='level'),
+                   df[target].iloc[t].reset_index(drop=True),
+                   st.loc[df.unique_id.to_numpy()[i]].reset_index(drop=True)], axis=1)
+    X['h'] = h.astype('float32')
+    X['same_weekday'] = back(week).astype('float32')
+    X['last_year'] = back(last_year_shift(df)[t]).astype('float32')
+    for k in X:
+        if X[k].dtype == object:
+            X[k] = X[k].astype('category')
+    y = df.y.to_numpy('float32')[t] / lv
+    pred = lag[i] == 0
+    return X, y, lv, ~pred, pred, df[['unique_id', 'ds']].iloc[t].reset_index(drop=True)
+
+
+def _fit(X, y, w, objective, alpha, params, rounds):
+    p = params | {'objective': objective, 'verbosity': -1} | ({'alpha': alpha} if objective == 'quantile' else {})
+    return lgb.train(p, lgb.Dataset(X, y, weight=w), rounds)
+
+
+def forecast(df, static, cutoff, cfg):
+    c = cfg['models']['lgbm']
+    X, y, lv, train, pred, keys = design(df, static, cutoff, cfg['features']['horizon'], c['origin_step'])
+    Xt, yt, wt = X[train], y[train], lv[train]
+    m = _fit(Xt, yt, wt, c['objective'], 0.5, c['params'], c['rounds'])
+    q = np.column_stack([_fit(Xt, yt, wt, 'quantile', a, c['params'], c['interval_rounds']).predict(X[pred])
+                         for a in (0.1, 0.9)] + [m.predict(X[pred])])
+    q = np.sort(np.clip(q, 0, None), axis=1) * lv[pred, None]  # sắp lại để q10 <= q50 <= q90
+    out = keys[pred].reset_index(drop=True).assign(q10=q[:, 0], q50=q[:, 1], q90=q[:, 2])
+    out.attrs['importance'] = pd.Series(m.feature_importance('gain'), index=X.columns)
+    out.attrs['train_rows'] = int(train.sum())
+    return out

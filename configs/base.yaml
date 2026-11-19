@@ -50,6 +50,15 @@ backtest:                   # gốc = ngày cuối dùng để train; dự báo 
   test: ['2026-01-01', '2026-01-31', '2026-03-02', '2026-04-01', '2026-05-01']  # 31/01/2026 bao trọn Tết 2026
   smoke: {csyt: 20, fields: [tong, luot_kham], cutoffs: ['2026-01-31']}      # --smoke: đo thời gian trước khi chạy đủ
 
+models:
+  lgbm:                     # plan §P6; tham số tune ở P8 trên các gốc validation
+    origin_step: 2          # gốc train cách nhau 2 ngày (7 lẻ nên tự xoay vòng các thứ)
+    objective: tweedie      # tweedie | quantile (0,5): chọn trên validation
+    rounds: 600
+    interval_rounds: 200    # q10/q90: model phân vị riêng
+    params: {learning_rate: 0.05, num_leaves: 63, min_data_in_leaf: 200, feature_fraction: 0.8,
+             bagging_fraction: 0.7, bagging_freq: 1, lambda_l2: 1.0, max_bin: 127, seed: 0}
+
 fields:
   direct: [tong, luot_kham, ngoai_tru, noi_tru, cap_cuu]
   derived: [bhyt, luot_vao, luot_ra, dung_tuyen, trai_tuyen]
