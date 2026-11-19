@@ -73,12 +73,14 @@ def _facilities(fac, q):
     """Một dòng cho mỗi ma_bv, ưu tiên dòng có tọa độ hợp lệ và có tuyến.
 
     Tọa độ hợp lệ: trong khung lat/lon, không phải tọa độ điền tạm (cả hai là bội của 0,1°, vd. (21,0; 105,0) dùng chung
-    cho 34 CSYT), và có ít nhất 1 CSYT cùng tỉnh trong coord_neighbors CSYT gần nhất của dm_coso_kcb.
+    cho 34 CSYT; hoặc một điểm dùng chung cho ≥ 5 CSYT, thường là trung tâm y tế huyện, vd. 19 CSYT Quốc Oai),
+    và có ít nhất 1 CSYT cùng tỉnh trong coord_neighbors CSYT gần nhất của dm_coso_kcb.
     """
     fac = fac.assign(ma_bv=fac.ma_bv.astype(str))
     inrange = fac.latitude.between(*q['lat']) & fac.longitude.between(*q['lon'])
     tenth = lambda x: (x * 10).round(6) % 1 == 0
-    placeholder = tenth(fac.latitude) & tenth(fac.longitude)
+    shared = fac.groupby(['latitude', 'longitude']).ma_bv.transform('nunique') >= 5  # NaN tọa độ -> NaN -> False
+    placeholder = (tenth(fac.latitude) & tenth(fac.longitude)) | shared
     ref = inrange & ~placeholder & fac.ma_tinh.notna()
     fac['province_share'] = np.nan  # NaN: không xét được (thiếu tọa độ/mã tỉnh)
     fac.loc[ref, 'province_share'] = neighbor_share(fac.latitude[ref], fac.longitude[ref],

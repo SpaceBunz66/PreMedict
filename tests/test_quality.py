@@ -14,7 +14,7 @@ END = pd.Timestamp('2026-06-07')  # Chủ nhật
 DAYS = pd.date_range(end=END, periods=800)
 BAD = {'gappy': 'coverage', 'gap': 'gap', 'small': 'volume', 'collapse': 'collapse', 'outliers': 'outliers',
        'shift': 'level_shift', 'stopped': 'active', 'young': 'history', 'nocoord': 'coords',
-       'placeholder': 'coords', 'otherprov': 'coords'}
+       'placeholder': 'coords', 'otherprov': 'coords', 'shared': 'coords'}
 
 
 def tong(kind):
@@ -66,6 +66,8 @@ def result():
     fac.loc[fac.ma_bv == 'nocoord', 'latitude'] = np.nan
     fac.loc[fac.ma_bv == 'placeholder', ['latitude', 'longitude']] = [21.0, 106.0]
     fac.loc[fac.ma_bv == 'otherprov', 'ma_tinh'] = '01'  # khai tỉnh 01 nhưng nằm giữa cụm tỉnh 24
+    shared = fac[fac.ma_bv == 'shared']  # điểm trung tâm huyện dùng chung cho 5 CSYT (4 CSYT kia không có dữ liệu)
+    fac = pd.concat([fac, *[shared.assign(ma_bv=f'tyt{n}') for n in range(4)]], ignore_index=True)
     return quality.evaluate(raw, fac, CFG)
 
 
