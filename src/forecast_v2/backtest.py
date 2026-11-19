@@ -11,7 +11,8 @@ import pandas as pd
 from forecast_v2 import clean, features, metrics
 from forecast_v2.extract import ROOT
 
-MODELS = {'snaive7': 'baselines.snaive7', 'mean4': 'baselines.mean4', 'lgbm': 'lgbm.forecast'}  # trong forecast_v2.models
+MODELS = {'snaive7': 'baselines.snaive7', 'mean4': 'baselines.mean4', 'lgbm': 'lgbm.forecast',
+          'prophet_prod': 'prophet_prod.prod', 'prophet_clean': 'prophet_prod.cleaned'}  # trong forecast_v2.models
 EVAL = ['unique_id', 'ds', 'y', 'available_mask', 'tet_offset', 'is_holiday']
 
 
@@ -72,7 +73,7 @@ def run(snap, cfg, names, smoke=False):
     daily, _ = clean.merge_provinces(clean.load_raw(snap))  # mọi CSYT: fold xét tháng gãy ETL trên toàn hệ thống
 
     cuts = cutoffs(b, smoke)
-    e, timing, imp = forecasts(long, st, daily, cuts, names, cfg)
+    e, timing, imp = forecasts(long, st, daily, cuts, names, cfg | {'snapshot': snap})  # prophet_prod đọc dữ liệu thô
     if e.q50.isna().any():
         print(f'CẢNH BÁO: {e.q50.isna().sum():,} điểm không có dự báo: {e[e.q50.isna()].groupby("model").size().to_dict()}')
     m = metrics.report(e[(e.available_mask > 0) & e.q50.notna()])
@@ -88,6 +89,10 @@ def run(snap, cfg, names, smoke=False):
           f'- Thời gian (giây/gốc, trung bình): {timing.groupby("model").seconds.mean().round(1).to_dict()}', '']
     for name, s in m.groupby(level='slice', sort=False):
         md += [f'## {name}', '', '```', s.droplevel('slice').round(3).to_string(), '```', '']
+    if 'prophet_prod' in names and len(names) > 1:
+        v = metrics.versus(e[(e.available_mask > 0) & e.q50.notna()])
+        md += ['## So với ProphetProd (Wilcoxon ghép cặp theo chuỗi)', '', '```', v.round(4).to_string(), '```', '']
+        print(v.round(4).to_string())
     if imp is not None:
         imp.to_parquet(out / 'importance.parquet', index=False)
         ref = imp[imp.set == 'val'] if (imp.set == 'val').any() else imp  # chọn biến trên validation (plan §P6)

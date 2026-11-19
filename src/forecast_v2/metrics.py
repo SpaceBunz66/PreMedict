@@ -35,7 +35,7 @@ def score(e, by=()):
 def report(e):
     """Các lát cắt của plan §P7. Tổng tỉnh = cộng dồn dự báo CSYT (bottom-up) rồi mới tính sai số.
 
-    shortcut: chưa có lát ngày thời tiết cực đoan, chỉ tiêu suy ra, Wilcoxon so với ProphetProd; thêm khi có ProphetProd/P8.
+    shortcut: chưa có lát ngày thời tiết cực đoan và chỉ tiêu suy ra; thêm ở P8. Wilcoxon: hàm versus.
     """
     prov = e.groupby(['model', 'set', 'ma_tinh', 'field', 'ds'], observed=True)[['y', 'q50']].sum().reset_index()
     prov = prov.assign(q10=np.nan, q90=np.nan, scale=np.nan)
@@ -57,3 +57,17 @@ def report(e):
     with warnings.catch_warnings():  # cột toàn NaN (model không có khoảng tin cậy): kiểu kết quả vẫn là float
         warnings.simplefilter('ignore', FutureWarning)
         return pd.concat(rows, ignore_index=True).set_index(['slice', 'group', 'set', 'model'])
+
+
+def versus(e, ref='prophet_prod'):
+    """Kiểm định Wilcoxon ghép cặp theo chuỗi (plan §P7): tổng |sai số| của mỗi chuỗi, model so với ref, cùng các điểm.
+    better_share: tỉ lệ chuỗi model có sai số nhỏ hơn ref."""
+    from scipy.stats import wilcoxon
+    err = (e.q50 - e.y).abs().groupby([e.set, e.unique_id, e.model]).sum().unstack('model')
+    rows = []
+    for kind, d in err.groupby(level='set'):
+        for m in d.columns.drop(ref):
+            x = d[[m, ref]].dropna()
+            rows.append({'set': kind, 'model': m, 'series': len(x), 'better_share': (x[m] < x[ref]).mean(),
+                         'p_value': wilcoxon(x[m], x[ref]).pvalue})
+    return pd.DataFrame(rows).set_index(['set', 'model'])
