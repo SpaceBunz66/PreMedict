@@ -1,4 +1,4 @@
-# Gói cho P0–P3. torch (CPU), neuralforecast, lightgbm, prophet, optuna thêm ở P6.
+# Gói cho P0–P8.
 # Chỉ dùng bản đã phát hành >= 2 tuần:
 #   pip install --uploaded-prior-to <ngày hôm nay - 14 ngày> -r requirements-ml.txt && pip install -e .
 # pandas<3: chưa xác nhận neuralforecast/prophet chạy với pandas 3.
@@ -13,3 +13,9 @@ pytest==9.2.0
 xarray==2026.9.0
 netCDF4==1.7.5.1.post1
 cdsapi==0.7.7
+# P6: models (cài 19/11/2026, --uploaded-prior-to 2026-11-05). torch từ PyPI trên Windows là bản CPU.
+# neuralforecast kéo theo pytorch-lightning, ray[tune], optuna; prophet kéo theo cmdstanpy.
+lightgbm==4.7.0
+torch==2.15.0
+neuralforecast==3.3.0
+prophet==1.5.0
