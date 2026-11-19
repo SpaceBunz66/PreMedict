@@ -1,0 +1,59 @@
+"""P7: metric trên các điểm mask = 1 (plan §P7)."""
+import warnings
+
+import numpy as np
+import pandas as pd
+
+QUANTILES = {'q10': 0.1, 'q50': 0.5, 'q90': 0.9}
+
+
+def mase_scale(df, cutoff):
+    """Mẫu số MASE theo chuỗi: MAE của seasonal-naive-7 trong 365 ngày tới cutoff, chỉ trên cặp ngày đều có mask = 1.
+    df: dữ liệu fold, mỗi chuỗi là lịch ngày liên tục, tăng dần."""
+    p = df[(df.ds <= cutoff) & (df.ds > cutoff - pd.Timedelta(days=365))]
+    g = p.groupby('unique_id')
+    d = (p.y - g.y.shift(7)).abs().where((p.available_mask > 0) & (g.available_mask.shift(7) > 0))
+    return d.groupby(p.unique_id).mean()
+
+
+def score(e, by=()):
+    """e: dòng đánh giá đã lọc mask = 1, cột model, set, y, q10, q50, q90, scale. by: tên cột hoặc Series.
+
+    wape, bias, pinball (trung bình 3 phân vị) chia cho tổng y; mase = trung bình |sai số| / scale; cover80 = tỉ lệ y
+    trong [q10, q90]. Model không có khoảng tin cậy: pinball, cover80 NaN.
+    """
+    pin = sum(np.maximum(t * (e.y - e[q]), (t - 1) * (e.y - e[q])) for q, t in QUANTILES.items()) / len(QUANTILES)
+    e = e.assign(ae=(e.q50 - e.y).abs(), err=e.q50 - e.y, pin=pin,
+                 cover=((e.y >= e.q10) & (e.y <= e.q90)).astype(float).where(e.q10.notna()),
+                 sae=(e.q50 - e.y).abs() / e.scale.where(e.scale > 0))
+    g = e.groupby(['model', 'set', *by], observed=True)
+    s = g[['y', 'ae', 'err']].sum()
+    return pd.DataFrame({'n': g.size(), 'wape': s.ae / s.y, 'mase': g.sae.mean(), 'bias': s.err / s.y,
+                         'pinball': g.pin.sum(min_count=1) / s.y, 'cover80': g.cover.mean()})
+
+
+def report(e):
+    """Các lát cắt của plan §P7. Tổng tỉnh = cộng dồn dự báo CSYT (bottom-up) rồi mới tính sai số.
+
+    shortcut: chưa có lát ngày thời tiết cực đoan, chỉ tiêu suy ra, Wilcoxon so với ProphetProd; thêm khi có ProphetProd/P8.
+    """
+    prov = e.groupby(['model', 'set', 'ma_tinh', 'field', 'ds'], observed=True)[['y', 'q50']].sum().reset_index()
+    prov = prov.assign(q10=np.nan, q90=np.nan, scale=np.nan)
+    out = {
+        'tổng': score(e),
+        'horizon': score(e, [pd.cut(e.h, [0, 7, 14, 30], labels=['1–7', '8–14', '15–30']).rename('h')]),
+        'chỉ tiêu': score(e, ['field']),
+        'tuyến': score(e, ['tuyen']),
+        'Tết ±21 ngày': score(e, [e.tet_offset.abs().le(21).rename('tet')]),
+        'ngày lễ': score(e, [e.is_holiday.gt(0).rename('holiday')]),
+        'Bắc Ninh (24)': score(e[e.ma_tinh == '24']),
+        'tổng tỉnh × chỉ tiêu': score(prov),
+    }
+    rows = []
+    for name, s in out.items():
+        s = s.reset_index()
+        by = [c for c in s.columns if c not in ('model', 'set', 'n', 'wape', 'mase', 'bias', 'pinball', 'cover80')]
+        rows.append(s.assign(slice=name, group=s[by[0]].astype(str) if by else '').drop(columns=by))
+    with warnings.catch_warnings():  # cột toàn NaN (model không có khoảng tin cậy): kiểu kết quả vẫn là float
+        warnings.simplefilter('ignore', FutureWarning)
+        return pd.concat(rows, ignore_index=True).set_index(['slice', 'group', 'set', 'model'])

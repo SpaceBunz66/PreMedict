@@ -45,6 +45,11 @@ features:
   horizon: 30
   weather_obs_delay_days: 5 # độ trễ thực tế của ERA5-Land (plan §P3); ablation D thử 1
 
+backtest:                   # gốc = ngày cuối dùng để train; dự báo gốc+1..gốc+horizon (plan §P7)
+  val: ['2025-01-15', '2025-09-30', '2025-11-30']                            # tuning; 15/01/2025 bao trọn Tết 2025
+  test: ['2026-01-01', '2026-01-31', '2026-03-02', '2026-04-01', '2026-05-01']  # 31/01/2026 bao trọn Tết 2026
+  smoke: {csyt: 20, fields: [tong, luot_kham], cutoffs: ['2026-01-31']}      # --smoke: đo thời gian trước khi chạy đủ
+
 fields:
   direct: [tong, luot_kham, ngoai_tru, noi_tru, cap_cuu]
   derived: [bhyt, luot_vao, luot_ra, dung_tuyen, trai_tuyen]
