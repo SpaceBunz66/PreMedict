@@ -41,6 +41,10 @@ weather:
   parallel: 3               # số request CDS chạy song song
   thresholds: {cold: 15, severe_cold: 13, hot: 35, very_hot: 37, heavy_rain: 50}  # °C, mm
 
+features:
+  horizon: 30
+  weather_obs_delay_days: 5 # độ trễ thực tế của ERA5-Land (plan §P3); ablation D thử 1
+
 fields:
   direct: [tong, luot_kham, ngoai_tru, noi_tru, cap_cuu]
   derived: [bhyt, luot_vao, luot_ra, dung_tuyen, trai_tuyen]
