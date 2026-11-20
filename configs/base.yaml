@@ -58,6 +58,15 @@ models:
     interval_rounds: 200    # q10/q90: model phân vị riêng
     params: {learning_rate: 0.05, num_leaves: 63, min_data_in_leaf: 200, feature_fraction: 0.8,
              bagging_fraction: 0.7, bagging_freq: 1, lambda_l2: 1.0, max_bin: 127, seed: 0}
+  tide:                     # plan §P6; neuralforecast, CPU. Early stopping giữ lại horizon ngày cuối trước gốc làm validation
+    input_size: 56
+    max_steps: 1000
+    val_check_steps: 50
+    early_stop_patience_steps: 5
+    batch_size: 64            # số chuỗi mỗi batch
+    windows_batch_size: 512
+    learning_rate: 0.001
+    random_seed: 0
 
 fields:
   direct: [tong, luot_kham, ngoai_tru, noi_tru, cap_cuu]

@@ -1,6 +1,7 @@
 """python -m forecast_v2.cli extract | quality | facilities | weather | features [--snapshot YYYY-MM-DD] [--config configs/base.yaml]
        python -m forecast_v2.cli backtest --models snaive7,mean4 [--smoke]"""
 import argparse
+import sys
 
 import yaml
 
@@ -9,6 +10,7 @@ from forecast_v2.extract import DATA_DIR, ROOT
 
 
 def main():
+    sys.stdout.reconfigure(encoding='utf-8')  # stdout chuyển hướng (| tee, > log) trên Windows mặc định cp1252: lỗi khi in tiếng Việt
     p = argparse.ArgumentParser(prog='forecast_v2')
     p.add_argument('command', choices=['extract', 'quality', 'facilities', 'weather', 'features', 'backtest'])
     p.add_argument('--snapshot', help='thư mục con của data/; mặc định: hôm nay (extract), mới nhất (quality)')

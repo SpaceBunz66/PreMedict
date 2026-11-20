@@ -12,7 +12,8 @@ from forecast_v2 import clean, features, metrics
 from forecast_v2.extract import ROOT
 
 MODELS = {'snaive7': 'baselines.snaive7', 'mean4': 'baselines.mean4', 'lgbm': 'lgbm.forecast',
-          'prophet_prod': 'prophet_prod.prod', 'prophet_clean': 'prophet_prod.cleaned'}  # trong forecast_v2.models
+          'prophet_prod': 'prophet_prod.prod', 'prophet_clean': 'prophet_prod.cleaned',
+          'tide': 'nf_models.tide'}  # trong forecast_v2.models
 EVAL = ['unique_id', 'ds', 'y', 'available_mask', 'tet_offset', 'is_holiday']
 
 
