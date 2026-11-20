@@ -18,15 +18,15 @@ from forecast_v2.models import lgbm
 
 
 def space(trial):
-    objective = trial.suggest_categorical('objective', ['tweedie', 'quantile'])
+    # A1 (plan §P8): bỏ quantile khỏi không gian (chậm ~10 lần, không tốt hơn ở lượt 1); trial cũ giữ trong study
+    objective = 'tweedie'
     params = {'learning_rate': trial.suggest_float('learning_rate', 0.02, 0.15, log=True),
               'num_leaves': trial.suggest_int('num_leaves', 15, 255, log=True),
               'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 20, 1000, log=True),
               'feature_fraction': trial.suggest_float('feature_fraction', 0.5, 1.0),
               'bagging_fraction': trial.suggest_float('bagging_fraction', 0.5, 1.0),
               'lambda_l2': trial.suggest_float('lambda_l2', 1e-3, 10.0, log=True)}
-    if objective == 'tweedie':
-        params['tweedie_variance_power'] = trial.suggest_float('tweedie_variance_power', 1.05, 1.9)
+    params['tweedie_variance_power'] = trial.suggest_float('tweedie_variance_power', 1.05, 1.9)
     return objective, trial.suggest_int('rounds', 200, 1200, step=100), params
 
 
@@ -91,4 +91,4 @@ def run(snap, cfg, trials, smoke=False):
         print(f'Tốt nhất: trial {study.best_trial.number}, WAPE {study.best_value:.4f}'
               + (f' (trial 0 = config hiện tại: {base.iloc[0]:.4f})' if len(base) else '')
               + '. Đoạn cho configs/base.yaml, models.lgbm:')
-        print(yaml.safe_dump({'objective': p.pop('objective'), 'rounds': p.pop('rounds'), 'params': p}, sort_keys=False))
+        print(yaml.safe_dump({'objective': p.pop('objective', 'tweedie'), 'rounds': p.pop('rounds'), 'params': p}, sort_keys=False))
