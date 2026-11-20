@@ -33,3 +33,23 @@ def test_tide_ignores_data_after_cutoff():
     _, df, _, _ = build(False)
     e = a.merge(df[df.available_mask > 0], on=['unique_id', 'ds'])
     assert np.abs(e.q50 - e.y).sum() / e.y.sum() < 0.3  # chuỗi tuần đều 40/20/5, 150 step: phải bắt được mẫu tuần
+
+
+def test_q50_is_median_when_quantiles_cross(monkeypatch):
+    """Ngày lễ đầu q10 có thể cao hơn median (smoke 20/11/2026): q50 phải là median, không phải giá trị giữa sau sắp xếp."""
+    from neuralforecast import NeuralForecast
+    raw, predict = {}, NeuralForecast.predict
+
+    def crossed(self, *args, **kwargs):
+        p = raw['p'] = predict(self, *args, **kwargs)
+        p['TiDE-lo-80.0'] = p['TiDE-median'] + 1  # sắp xếp sẽ lấy lo-80 làm q50
+        p['TiDE-hi-80.0'] = p['TiDE-median'] + 2
+        return p
+
+    monkeypatch.setattr(NeuralForecast, 'predict', crossed)
+    _, df, st, _ = build(False)
+    out = nf_models.tide(df, st, CUT, CFG | {'models': {'tide': FAST['models']['tide'] | {'max_steps': 5}}})
+    p, level = raw['p'], nf_models.frames(df, st, CUT, None)[-1]
+    want = np.clip(p['TiDE-median'].to_numpy(float), 0, None) * p.unique_id.map(level).to_numpy()
+    np.testing.assert_allclose(out.q50, want)
+    assert (out.q10 == out.q50).all()
