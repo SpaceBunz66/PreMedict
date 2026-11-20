@@ -10,6 +10,7 @@ import numpy as np
 import optuna
 import pandas as pd
 import yaml
+from tqdm import tqdm
 
 from forecast_v2 import backtest, features
 from forecast_v2.extract import ROOT
@@ -44,10 +45,10 @@ def folds(snap, cfg, smoke):
     return out
 
 
-def wape(data, objective, rounds, params):
+def wape(data, objective, rounds, params, bar=None):
     err = tot = 0.0
     for Xt, yt, wt, Xp, lp, ya in data:
-        q = np.clip(lgbm._fit(Xt, yt, wt, objective, 0.5, params, rounds).predict(Xp), 0, None) * lp
+        q = np.clip(lgbm._fit(Xt, yt, wt, objective, 0.5, params, rounds, bar).predict(Xp), 0, None) * lp
         err += np.abs(q - ya).sum()
         tot += ya.sum()
     return err / tot
@@ -71,12 +72,14 @@ def run(snap, cfg, trials, smoke=False):
         def objective(trial):
             t0 = time.perf_counter()
             obj, rounds, params = space(trial)
-            v = wape(data, obj, rounds, c['params'] | params)
+            with tqdm(total=rounds * len(data), desc=f'trial {trial.number} ({obj}, {len(data)} gốc)', unit='vòng',
+                      leave=False) as bar:
+                v = wape(data, obj, rounds, c['params'] | params, bar)
             best = min([v] + [t.value for t in study.trials if t.value is not None])
-            print(f'trial {trial.number}: WAPE {v:.4f} (tốt nhất {best:.4f}), {time.perf_counter() - t0:.0f}s', flush=True)
+            tqdm.write(f'trial {trial.number}: WAPE {v:.4f} (tốt nhất {best:.4f}), {time.perf_counter() - t0:.0f}s')
             return v
 
-        study.optimize(objective, n_trials=trials)
+        study.optimize(objective, n_trials=trials, show_progress_bar=True)  # thanh ngoài: số trial, thời gian còn lại
 
     t = study.trials_dataframe(attrs=('number', 'value', 'duration', 'state', 'params'))
     t = t[t.state == 'COMPLETE'].assign(best_so_far=lambda d: d.value.cummin(),

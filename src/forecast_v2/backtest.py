@@ -13,6 +13,7 @@ import time
 
 import pandas as pd
 import yaml
+from tqdm import tqdm
 
 from forecast_v2 import clean, features, metrics
 from forecast_v2.calendar_vn import HOLIDAYS_CSV
@@ -43,11 +44,13 @@ def forecasts(long, st, daily, cuts, names, cfg):
     if max(cuts) + h > last:
         raise ValueError(f'Gốc {max(cuts):%d/%m/%Y} + horizon vượt ngày cuối có dữ liệu {last:%d/%m/%Y}')
     out, timing, imp = [], [], []
+    bar = tqdm(total=len(cuts) * len(names), desc='backtest', unit='model×gốc')
     for cutoff, kind in sorted(cuts.items()):
         df, fs = features.fold(long, st, daily, cutoff, cfg)
         actual = df.loc[df.ds > cutoff, EVAL]
         scale = metrics.mase_scale(df, cutoff)
         for name in names:
+            bar.set_postfix_str(f'{cutoff:%d/%m/%Y} {name}')
             t0 = time.perf_counter()
             fc = model(name)(df, fs, cutoff, cfg)
             timing.append({'model': name, 'cutoff': cutoff, 'seconds': time.perf_counter() - t0,
@@ -59,8 +62,10 @@ def forecasts(long, st, daily, cuts, names, cfg):
             fc = actual.merge(fc, on=['unique_id', 'ds'], how='left')  # thiếu dự báo -> NaN, không âm thầm bỏ
             out.append(fc.assign(model=name, set=kind, cutoff=cutoff, h=(fc.ds - cutoff).dt.days,
                                  scale=fc.unique_id.map(scale)))
-        print(f'{cutoff:%d/%m/%Y} ({kind}): {df.unique_id.nunique()} chuỗi; '
-              + ', '.join(f'{t["model"]} {t["seconds"]:.0f}s' for t in timing[-len(names):]), flush=True)
+            bar.update()
+        tqdm.write(f'{cutoff:%d/%m/%Y} ({kind}): {df.unique_id.nunique()} chuỗi; '
+                   + ', '.join(f'{t["model"]} {t["seconds"]:.0f}s' for t in timing[-len(names):]))
+    bar.close()
     e = pd.concat(out, ignore_index=True).merge(st[['unique_id', 'field', 'tuyen', 'ma_tinh']], on='unique_id')
     return e, pd.DataFrame(timing), pd.concat(imp, ignore_index=True) if imp else None
 

@@ -29,21 +29,30 @@ def frames(df, static, cutoff, weather):
 
 
 def forecast_with(cls, params, df, static, cutoff, cfg, weather=None):
+    import pytorch_lightning as pl
     import torch
     from neuralforecast import NeuralForecast
+    from tqdm import tqdm
     from neuralforecast.losses.pytorch import MQLoss
     for name in ('lightning.pytorch', 'pytorch_lightning', 'lightning_fabric'):
         logging.getLogger(name).setLevel(logging.ERROR)
     torch.set_num_threads(os.cpu_count())
 
     train, fut, st, futr, hist, stat = frames(df, static, cutoff, weather)
+    bar = tqdm(total=params['max_steps'], desc=cls.__name__, unit='step', leave=False)  # early stopping: dừng trước 100%
+
+    class Progress(pl.Callback):  # bar lấy qua closure: NF deepcopy callback khi lưu hparams
+        def on_train_batch_end(self, *args, **kwargs):
+            bar.update()
+
     model = cls(h=cfg['features']['horizon'], futr_exog_list=futr, hist_exog_list=hist, stat_exog_list=stat,
                 loss=MQLoss(quantiles=QUANTILES), scaler_type='robust', start_padding_enabled=True,
                 accelerator='cpu', enable_progress_bar=False, logger=False, enable_model_summary=False,
-                enable_checkpointing=False, **params)
+                enable_checkpointing=False, callbacks=[Progress()], **params)
     nf = NeuralForecast(models=[model], freq='D')
     early = params.get('early_stop_patience_steps', -1) > 0
     nf.fit(df=train, static_df=st, val_size=cfg['features']['horizon'] if early else 0)
+    bar.close()
     p = nf.predict(futr_df=fut).reset_index()
     cols = [c for c in p if c.startswith(cls.__name__)]  # thứ tự cột theo phân vị: lo-80, median, hi-80
     q = np.sort(np.clip(p[cols].to_numpy(float), 0, None), axis=1)

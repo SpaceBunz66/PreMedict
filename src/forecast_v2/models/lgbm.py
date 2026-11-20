@@ -10,6 +10,7 @@ q10/q90: model phân vị riêng (ít vòng hơn q50).
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from forecast_v2.calendar_vn import tet_days
 
@@ -86,9 +87,9 @@ def design(df, static, cutoff, horizon, step):
     return X, y, lv, ~pred, pred, df[['unique_id', 'ds']].iloc[t].reset_index(drop=True)
 
 
-def _fit(X, y, w, objective, alpha, params, rounds):
+def _fit(X, y, w, objective, alpha, params, rounds, bar=None):
     p = params | {'objective': objective, 'verbosity': -1} | ({'alpha': alpha} if objective == 'quantile' else {})
-    return lgb.train(p, lgb.Dataset(X, y, weight=w), rounds)
+    return lgb.train(p, lgb.Dataset(X, y, weight=w), rounds, callbacks=[lambda env: bar.update()] if bar else None)
 
 
 def forecast(df, static, cutoff, cfg, save_to=None):
@@ -96,8 +97,9 @@ def forecast(df, static, cutoff, cfg, save_to=None):
     c = cfg['models']['lgbm']
     X, y, lv, train, pred, keys = design(df, static, cutoff, cfg['features']['horizon'], c['origin_step'])
     Xt, yt, wt = X[train], y[train], lv[train]
-    models = {'q50': _fit(Xt, yt, wt, c['objective'], 0.5, c['params'], c['rounds'])} | {
-        f'q{round(a * 100)}': _fit(Xt, yt, wt, 'quantile', a, c['params'], c['interval_rounds']) for a in (0.1, 0.9)}
+    with tqdm(total=c['rounds'] + 2 * c['interval_rounds'], desc='lgbm q50+q10+q90', unit='vòng', leave=False) as bar:
+        models = {'q50': _fit(Xt, yt, wt, c['objective'], 0.5, c['params'], c['rounds'], bar)} | {
+            f'q{round(a * 100)}': _fit(Xt, yt, wt, 'quantile', a, c['params'], c['interval_rounds'], bar) for a in (0.1, 0.9)}
     q = np.column_stack([models[k].predict(X[pred]) for k in ('q10', 'q50', 'q90')])
     q = np.sort(np.clip(q, 0, None), axis=1) * lv[pred, None]  # sắp lại để q10 <= q50 <= q90
     out = keys[pred].reset_index(drop=True).assign(q10=q[:, 0], q50=q[:, 1], q90=q[:, 2])

@@ -12,7 +12,8 @@ from forecast_v2.extract import DATA_DIR, ROOT
 
 
 def main():
-    sys.stdout.reconfigure(encoding='utf-8')  # stdout chuyển hướng (| tee, > log) trên Windows mặc định cp1252: lỗi khi in tiếng Việt
+    for stream in (sys.stdout, sys.stderr):  # chuyển hướng (| tee, > log) trên Windows mặc định cp1252: lỗi tiếng Việt
+        stream.reconfigure(encoding='utf-8')  # stderr: thanh tiến độ tqdm
     p = argparse.ArgumentParser(prog='forecast_v2')
     p.add_argument('command', choices=['extract', 'quality', 'facilities', 'weather', 'features', 'backtest',
                                         'train-final', 'tune'])
