@@ -91,15 +91,19 @@ def _fit(X, y, w, objective, alpha, params, rounds):
     return lgb.train(p, lgb.Dataset(X, y, weight=w), rounds)
 
 
-def forecast(df, static, cutoff, cfg):
+def forecast(df, static, cutoff, cfg, save_to=None):
+    """save_to: thư mục lưu 3 model (lgbm_q10/q50/q90.txt) cho train-final."""
     c = cfg['models']['lgbm']
     X, y, lv, train, pred, keys = design(df, static, cutoff, cfg['features']['horizon'], c['origin_step'])
     Xt, yt, wt = X[train], y[train], lv[train]
-    m = _fit(Xt, yt, wt, c['objective'], 0.5, c['params'], c['rounds'])
-    q = np.column_stack([_fit(Xt, yt, wt, 'quantile', a, c['params'], c['interval_rounds']).predict(X[pred])
-                         for a in (0.1, 0.9)] + [m.predict(X[pred])])
+    models = {'q50': _fit(Xt, yt, wt, c['objective'], 0.5, c['params'], c['rounds'])} | {
+        f'q{round(a * 100)}': _fit(Xt, yt, wt, 'quantile', a, c['params'], c['interval_rounds']) for a in (0.1, 0.9)}
+    q = np.column_stack([models[k].predict(X[pred]) for k in ('q10', 'q50', 'q90')])
     q = np.sort(np.clip(q, 0, None), axis=1) * lv[pred, None]  # sắp lại để q10 <= q50 <= q90
     out = keys[pred].reset_index(drop=True).assign(q10=q[:, 0], q50=q[:, 1], q90=q[:, 2])
-    out.attrs['importance'] = pd.Series(m.feature_importance('gain'), index=X.columns)
+    out.attrs['importance'] = pd.Series(models['q50'].feature_importance('gain'), index=X.columns)
     out.attrs['train_rows'] = int(train.sum())
+    if save_to:
+        for k, m in models.items():
+            m.save_model(save_to / f'lgbm_{k}.txt')
     return out

@@ -39,3 +39,13 @@ def test_forecast_ignores_data_after_cutoff():
     _, df, _, _ = build(False)
     e = a.merge(df[df.available_mask > 0], on=['unique_id', 'ds'])
     assert (e.q50 - e.y).abs().sum() / e.y.sum() < 0.1  # chuỗi tuần đều 40/20/5: phải học được
+
+
+def test_saved_models_reproduce_forecast(tmp_path):
+    import lightgbm as lgb
+    _, df, st, _ = build(False)
+    out = lgbm.forecast(df, st, CUT, FAST, save_to=tmp_path)
+    X, _, lv, _, pred, _ = lgbm.design(df, st, CUT, H, FAST['models']['lgbm']['origin_step'])
+    q = np.column_stack([lgb.Booster(model_file=tmp_path / f'lgbm_{k}.txt').predict(X[pred]) for k in ('q10', 'q50', 'q90')])
+    q = np.sort(np.clip(q, 0, None), axis=1) * lv[pred, None]
+    np.testing.assert_allclose(out[['q10', 'q50', 'q90']].to_numpy(), q, rtol=1e-6)

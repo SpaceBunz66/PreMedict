@@ -3,12 +3,19 @@
 Đầu ra trong runs/<run_id>/: forecasts.parquet (mọi điểm, kèm y và mask), metrics.parquet, metrics.md,
 importance.parquet (model có feature importance).
 """
+import hashlib
 import importlib
+import json
+import re
+import shutil
+import subprocess
 import time
 
 import pandas as pd
+import yaml
 
 from forecast_v2 import clean, features, metrics
+from forecast_v2.calendar_vn import HOLIDAYS_CSV
 from forecast_v2.extract import ROOT
 
 MODELS = {'snaive7': 'baselines.snaive7', 'mean4': 'baselines.mean4', 'lgbm': 'lgbm.forecast',
@@ -58,10 +65,8 @@ def forecasts(long, st, daily, cuts, names, cfg):
     return e, pd.DataFrame(timing), pd.concat(imp, ignore_index=True) if imp else None
 
 
-def run(snap, cfg, names, smoke=False):
-    unknown = set(names) - set(MODELS)
-    if unknown:
-        raise ValueError(f'Model chưa có: {sorted(unknown)}; có: {sorted(MODELS)}')
+def load(snap, cfg, smoke=False):
+    """(static tập chặt, bảng long, daily thô). smoke: 20 CSYT, 2 chỉ tiêu (backtest.smoke)."""
     b = cfg['backtest']
     st = pd.read_parquet(snap / 'features_static.parquet')
     st = st[st.strict]  # quyết định 19/11/2026: chỉ tập chặt
@@ -72,6 +77,53 @@ def run(snap, cfg, names, smoke=False):
     long = pd.read_parquet(snap / 'features.parquet')
     long = long[long.unique_id.isin(st.unique_id)]
     daily, _ = clean.merge_provinces(clean.load_raw(snap))  # mọi CSYT: fold xét tháng gãy ETL trên toàn hệ thống
+    return st, long, daily
+
+
+def final(snap, cfg, names):
+    """train-final (plan §P8): train trên toàn bộ dữ liệu tới ngày cuối có dữ liệu, dự báo horizon ngày sau đó,
+    lưu artifacts/<model>/<run_id>/: model, forecast.csv, importance.csv, config.yaml, manifest.json, metric backtest."""
+    if names != ['lgbm']:
+        raise ValueError('train-final: hiện chỉ lưu được model lgbm (--models lgbm)')
+    st, long, daily = load(snap, cfg)
+    cutoff = long.ds[long.y.notna()].max()
+    df, fs = features.fold(long, st, daily, cutoff, cfg)
+    out = ROOT / 'artifacts' / 'lgbm' / f'{pd.Timestamp.now():%Y%m%d-%H%M%S}'
+    out.mkdir(parents=True)
+    t0 = time.perf_counter()
+    fc = model('lgbm')(df, fs, cutoff, cfg, save_to=out)
+    seconds = time.perf_counter() - t0
+    h = cfg['features']['horizon']
+    assert len(fc) == len(st) * h and fc.q50.notna().all(), 'thiếu dự báo cho một số chuỗi'
+    train_rows = fc.attrs['train_rows']  # merge bên dưới làm mất attrs
+    fc.attrs['importance'].sort_values(ascending=False).rename('gain').to_csv(out / 'importance.csv')
+    fc = st[['unique_id', 'ma_tinh', 'csyt_id', 'field']].merge(fc, on='unique_id').drop(columns='unique_id')
+    fc.round(2).to_csv(out / 'forecast.csv', index=False)
+
+    runs = sorted(p for p in (ROOT / 'runs').glob('*') if re.search(r'[_-]lgbm(-|$)', p.name)
+                  and not p.name.endswith('_smoke') and (p / 'metrics.md').exists())
+    if runs:
+        shutil.copy(runs[-1] / 'metrics.md', out / 'backtest_metrics.md')
+    git = lambda *a: subprocess.run(['git', '-C', str(ROOT), *a], capture_output=True, text=True).stdout.strip()
+    manifest = {'model': 'lgbm', 'snapshot': snap.name, 'train_until': f'{cutoff:%Y-%m-%d}',
+                'forecast': [f'{fc.ds.min():%Y-%m-%d}', f'{fc.ds.max():%Y-%m-%d}'],
+                'csyt': int(st.csyt_id.nunique()), 'series': len(st), 'train_rows': train_rows,
+                'seconds': round(seconds), 'git_commit': git('rev-parse', 'HEAD'),
+                'git_dirty': bool(git('status', '--porcelain', '--untracked-files=no')),
+                'calendar_sha256': hashlib.sha256(HOLIDAYS_CSV.read_bytes()).hexdigest(),
+                'backtest_run': runs[-1].name if runs else None}
+    (out / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+    (out / 'config.yaml').write_text(yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False), encoding='utf-8')
+    print(json.dumps(manifest, ensure_ascii=False, indent=2))
+    print(f'Đã ghi {out}')
+
+
+def run(snap, cfg, names, smoke=False):
+    unknown = set(names) - set(MODELS)
+    if unknown:
+        raise ValueError(f'Model chưa có: {sorted(unknown)}; có: {sorted(MODELS)}')
+    b = cfg['backtest']
+    st, long, daily = load(snap, cfg, smoke)
 
     cuts = cutoffs(b, smoke)
     e, timing, imp = forecasts(long, st, daily, cuts, names, cfg | {'snapshot': snap})  # prophet_prod đọc dữ liệu thô
