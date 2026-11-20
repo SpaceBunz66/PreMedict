@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 QUANTILES = {'q10': 0.1, 'q50': 0.5, 'q90': 0.9}
+H_BINS, H_LABELS = [0, 7, 14, 30], ['1–7', '8–14', '15–30']
 
 
 def mase_scale(df, cutoff):
@@ -41,7 +42,7 @@ def report(e):
     prov = prov.assign(q10=np.nan, q90=np.nan, scale=np.nan)
     out = {
         'tổng': score(e),
-        'horizon': score(e, [pd.cut(e.h, [0, 7, 14, 30], labels=['1–7', '8–14', '15–30']).rename('h')]),
+        'horizon': score(e, [pd.cut(e.h, H_BINS, labels=H_LABELS).rename('h')]),
         'chỉ tiêu': score(e, ['field']),
         'tuyến': score(e, ['tuyen']),
         'Tết ±21 ngày': score(e, [e.tet_offset.abs().le(21).rename('tet')]),
@@ -71,3 +72,29 @@ def versus(e, ref='prophet_prod'):
             rows.append({'set': kind, 'model': m, 'series': len(x), 'better_share': (x[m] < x[ref]).mean(),
                          'p_value': wilcoxon(x[m], x[ref]).pvalue})
     return pd.DataFrame(rows).set_index(['set', 'model'])
+
+
+def interval_factors(e, miss=0.1):
+    """A5 (plan §P8): conformal theo nhóm h. e: dòng mask = 1 của các gốc validation, cột model, h, y, q10, q50, q90.
+
+    Giãn/co mỗi đầu khoảng quanh q50 theo một hệ số: q10' = q50 − lo·(q50 − q10), q90' = q50 + hi·(q90 − q50), với lo
+    (hi) = phân vị 1 − miss của (q50 − y)/(q50 − q10) ((y − q50)/(q90 − q50)), nên mỗi đầu sai đúng tỉ lệ miss trên e.
+    Tỉ lệ theo độ rộng của chính model nên dùng chung được cho chuỗi lớn và nhỏ. Trả về bảng index (model, h) cột lo, hi.
+    """
+    e = e[e.q10.notna()]
+
+    def ratio(over, width):  # độ rộng 0: y vượt q50 thì không hệ số nào phủ được (inf), không thì luôn phủ (-inf)
+        return np.where(width > 0, over / np.where(width > 0, width, 1), np.where(over > 0, np.inf, -np.inf))
+
+    r = pd.DataFrame({'lo': ratio(e.q50 - e.y, e.q50 - e.q10), 'hi': ratio(e.y - e.q50, e.q90 - e.q50)}, index=e.index)
+    g = r.groupby([e.model, pd.cut(e.h, H_BINS, labels=H_LABELS).rename('h')], observed=True)
+    return g.quantile(1 - miss, interpolation='higher').clip(lower=0)
+
+
+def calibrate(e, f):
+    """Áp hệ số của interval_factors vào q10/q90 (q50 giữ nguyên); model không có trong f giữ khoảng cũ."""
+    k = pd.MultiIndex.from_arrays([e.model, pd.cut(e.h, H_BINS, labels=H_LABELS).astype(str)])
+    f = f.set_axis(f.index.set_levels(f.index.levels[1].astype(str), level=1)).reindex(k)
+    lo, hi = f.lo.to_numpy(), f.hi.to_numpy()
+    return e.assign(q10=np.where(np.isnan(lo), e.q10, np.clip(e.q50 - lo * (e.q50 - e.q10), 0, None)),
+                    q90=np.where(np.isnan(hi), e.q90, e.q50 + hi * (e.q90 - e.q50)))

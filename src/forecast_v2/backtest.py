@@ -85,6 +85,31 @@ def load(snap, cfg, smoke=False):
     return st, long, daily
 
 
+def latest_runs(name):
+    """Các run backtest đủ gốc (không smoke) có model name, cũ tới mới."""
+    return sorted(p for p in (ROOT / 'runs').glob('*') if re.search(rf'[_-]{name}(-|$)', p.name)
+                  and not p.name.endswith('_smoke') and (p / 'metrics.md').exists())
+
+
+def calibration(names):
+    """A5: hệ số khoảng tin cậy theo nhóm h, fit trên các gốc validation của run mới nhất có từng model; ghi
+    interval_factors_<model>.csv vào run đó và in độ phủ 80% trước/sau theo tập × nhóm h (test chỉ để báo cáo)."""
+    for name in names:
+        run = latest_runs(name)[-1]
+        e = pd.read_parquet(run / 'forecasts.parquet')
+        e = e[(e.model == name) & (e.available_mask > 0) & e.q50.notna()]
+        if e.q10.isna().all():
+            print(f'{name}: không có khoảng tin cậy, bỏ qua')
+            continue
+        f = metrics.interval_factors(e[e.set == 'val'])
+        f.to_csv(run / f'interval_factors_{name}.csv')  # một run có thể chứa nhiều model
+        h = pd.cut(e.h, metrics.H_BINS, labels=metrics.H_LABELS).rename('h')
+        cover = lambda d: d.y.between(d.q10, d.q90).groupby([d.set, h], observed=True).mean()
+        print(f'{name} ({run.name}): hệ số\n{f.round(3).to_string()}\n'
+              + pd.DataFrame({'trước': cover(e), 'sau': cover(metrics.calibrate(e, f))}).round(3).to_string())
+        print(f'Đã ghi {run / f"interval_factors_{name}.csv"}')
+
+
 def final(snap, cfg, names):
     """train-final (plan §P8): train trên toàn bộ dữ liệu tới ngày cuối có dữ liệu, dự báo horizon ngày sau đó,
     lưu artifacts/<model>/<run_id>/: model, forecast.csv, importance.csv, config.yaml, manifest.json, metric backtest."""
@@ -102,11 +127,17 @@ def final(snap, cfg, names):
     assert len(fc) == len(st) * h and fc.q50.notna().all(), 'thiếu dự báo cho một số chuỗi'
     train_rows = fc.attrs['train_rows']  # merge bên dưới làm mất attrs
     fc.attrs['importance'].sort_values(ascending=False).rename('gain').to_csv(out / 'importance.csv')
+    runs = latest_runs('lgbm')
+    factors = runs[-1] / 'interval_factors_lgbm.csv' if runs else None
+    if factors and factors.exists():  # A5: khoảng tin cậy hiệu chỉnh trên validation của run backtest
+        shutil.copy(factors, out / factors.name)
+        fc = metrics.calibrate(fc.assign(model='lgbm', h=(fc.ds - cutoff).dt.days),
+                               pd.read_csv(factors, index_col=[0, 1])).drop(columns=['model', 'h'])
+    else:
+        print('CẢNH BÁO: chưa có interval_factors_lgbm.csv (lệnh calibrate): q10/q90 chưa hiệu chỉnh')
     fc = st[['unique_id', 'ma_tinh', 'csyt_id', 'field']].merge(fc, on='unique_id').drop(columns='unique_id')
     fc.round(2).to_csv(out / 'forecast.csv', index=False)
 
-    runs = sorted(p for p in (ROOT / 'runs').glob('*') if re.search(r'[_-]lgbm(-|$)', p.name)
-                  and not p.name.endswith('_smoke') and (p / 'metrics.md').exists())
     if runs:
         shutil.copy(runs[-1] / 'metrics.md', out / 'backtest_metrics.md')
     git = lambda *a: subprocess.run(['git', '-C', str(ROOT), *a], capture_output=True, text=True).stdout.strip()

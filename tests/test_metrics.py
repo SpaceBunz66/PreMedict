@@ -58,3 +58,20 @@ def test_wape_mase_coverage_by_hand():
     q = e.assign(q10=e.y - 1, q90=e.y + 1)
     q.loc[q.index[:3], 'q90'] = q.y[:3] - 0.5  # 3/14 điểm nằm ngoài khoảng
     assert np.isclose(metrics.score(q).iloc[0].cover80, 11 / 14)
+
+
+def test_interval_calibration_hits_target():
+    rng = np.random.default_rng(0)
+    n = 6000
+    q50 = rng.uniform(10, 1000, n)
+    y = q50 * np.exp(rng.normal(0, 0.3, n))  # khoảng model quá hẹp: chỉ ±10%
+    e = pd.DataFrame({'model': 'm', 'h': rng.integers(1, 31, n), 'y': y, 'q50': q50, 'q10': q50 * 0.9, 'q90': q50 * 1.1})
+    e.loc[:9, ['q10', 'q90']] = e.loc[:9, ['q50', 'q50']].to_numpy()  # độ rộng 0 không làm hỏng phép tính
+    f = metrics.interval_factors(e)
+    assert list(f.index.get_level_values('h')) == metrics.H_LABELS and (f > 1).all().all()
+    c = metrics.calibrate(e, f)
+    assert (c.q50 == e.q50).all() and (c.q10 <= c.q50).all() and (c.q90 >= c.q50).all()
+    for _, d in c.groupby(pd.cut(c.h, metrics.H_BINS), observed=True):  # đúng 10% mỗi đầu trên chính dữ liệu fit
+        assert abs((d.y < d.q10).mean() - 0.1) < 0.01 and abs((d.y > d.q90).mean() - 0.1) < 0.01
+    other = e.assign(model='x')
+    assert metrics.calibrate(other, f)[['q10', 'q90']].equals(other[['q10', 'q90']])  # model không có hệ số: giữ nguyên

@@ -1,7 +1,8 @@
 """python -m forecast_v2.cli extract | quality | facilities | weather | features [--snapshot YYYY-MM-DD] [--config configs/base.yaml]
        python -m forecast_v2.cli backtest --models snaive7,mean4 [--smoke]
        python -m forecast_v2.cli train-final --models lgbm
-       python -m forecast_v2.cli tune [--trials 10] [--smoke]   # chạy lại = chạy tiếp study"""
+       python -m forecast_v2.cli tune [--trials 10] [--smoke]   # chạy lại = chạy tiếp study
+       python -m forecast_v2.cli calibrate --models lgbm,tide   # A5: hệ số khoảng tin cậy từ run backtest mới nhất"""
 import argparse
 import sys
 
@@ -16,7 +17,7 @@ def main():
         stream.reconfigure(encoding='utf-8')  # stderr: thanh tiến độ tqdm
     p = argparse.ArgumentParser(prog='forecast_v2')
     p.add_argument('command', choices=['extract', 'quality', 'facilities', 'weather', 'features', 'backtest',
-                                        'train-final', 'tune'])
+                                        'train-final', 'tune', 'calibrate'])
     p.add_argument('--snapshot', help='thư mục con của data/; mặc định: hôm nay (extract), mới nhất (quality)')
     p.add_argument('--config', default=ROOT / 'configs' / 'base.yaml')
     p.add_argument('--models', default='snaive7,mean4', help='backtest: tên model, cách nhau bởi dấu phẩy')
@@ -25,6 +26,9 @@ def main():
     args = p.parse_args()
     if args.command == 'extract':
         extract.run(args.snapshot)
+        return
+    if args.command == 'calibrate':
+        backtest.calibration(args.models.split(','))
         return
     cfg = yaml.safe_load(open(args.config, encoding='utf-8'))
     snap = DATA_DIR / args.snapshot if args.snapshot else max(DATA_DIR.glob('20??-??-??'))
