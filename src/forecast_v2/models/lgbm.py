@@ -18,6 +18,12 @@ LAGS = [0, 1, 2, 3, 4, 5, 6, 13, 20, 27]
 WINDOWS = [7, 14, 28, 56]
 NOT_TARGET = ['unique_id', 'csyt_id', 'field', 'ds', 'y', 'available_mask']  # còn lại (trừ w_*): covariate tại ngày đích
 STATIC = ['field', 'tuyen', 'hang', 'latitude', 'longitude', 'log_scale', 'weekend_open']
+# A2 (plan §P8): nhóm feature bỏ được (--drop); lịch cơ bản, lag/rolling và static luôn giữ
+HOLIDAY = ['is_holiday', 'is_lam_bu', 'is_day_off', 'holiday_type', 'break_len', 'break_pos', 'days_to_break',
+           'days_since_break', 'tet_offset', 'tet_pre', 'tet_post', 'lunar_day', 'lunar_month', 'lunar_leap', 'is_mung1',
+           'is_ram', 'school_break', 'regional_holiday']
+GROUPS = {'holiday': lambda k: k in HOLIDAY, 'weather': lambda k: k.startswith('w_'),  # w_*: cần job tải ERA5 hằng ngày
+          'clim': lambda k: k.startswith('clim_')}
 
 
 def origin_features(df):
@@ -50,9 +56,11 @@ def last_year_shift(df):
     return np.where(near, gap, 364)
 
 
-def design(df, static, cutoff, horizon, step):
+def design(df, static, cutoff, horizon, step, drop=()):
     """(X, y/level, level, mẫu train, mẫu dự báo). Gốc train: cutoff − step·k (k ≥ 1) với đích ≤ cutoff, mask đích = 1;
-    gốc dự báo: cutoff, h = 1..horizon."""
+    gốc dự báo: cutoff, h = 1..horizon. drop: tên nhóm trong GROUPS (bỏ holiday thì last_year lùi đúng 364 ngày)."""
+    if set(drop) - set(GROUPS):
+        raise ValueError(f'Nhóm feature không có: {sorted(set(drop) - set(GROUPS))}; có: {sorted(GROUPS)}')
     df = df.sort_values(['unique_id', 'ds']).reset_index(drop=True)
     of = origin_features(df)
     off = df.groupby('unique_id').cumcount().to_numpy()  # vị trí trong chuỗi
@@ -78,7 +86,8 @@ def design(df, static, cutoff, horizon, step):
                    st.loc[df.unique_id.to_numpy()[i]].reset_index(drop=True)], axis=1)
     X['h'] = h.astype('float32')
     X['same_weekday'] = back(week).astype('float32')
-    X['last_year'] = back(last_year_shift(df)[t]).astype('float32')
+    X['last_year'] = back(364 if 'holiday' in drop else last_year_shift(df)[t]).astype('float32')
+    X = X.drop(columns=[k for k in X if any(GROUPS[g](k) for g in drop)])
     for k in X:
         if X[k].dtype == object:
             X[k] = X[k].astype('category')
@@ -95,7 +104,8 @@ def _fit(X, y, w, objective, alpha, params, rounds, bar=None):
 def forecast(df, static, cutoff, cfg, save_to=None):
     """save_to: thư mục lưu 3 model (lgbm_q10/q50/q90.txt) cho train-final."""
     c = cfg['models']['lgbm']
-    X, y, lv, train, pred, keys = design(df, static, cutoff, cfg['features']['horizon'], c['origin_step'])
+    X, y, lv, train, pred, keys = design(df, static, cutoff, cfg['features']['horizon'], c['origin_step'],
+                                          cfg['features'].get('drop', ()))
     Xt, yt, wt = X[train], y[train], lv[train]
     with tqdm(total=c['rounds'] + 2 * c['interval_rounds'], desc='lgbm q50+q10+q90', unit='vòng', leave=False) as bar:
         models = {'q50': _fit(Xt, yt, wt, c['objective'], 0.5, c['params'], c['rounds'], bar)} | {

@@ -167,7 +167,9 @@ def run(snap, cfg, names, smoke=False):
         print(f'CẢNH BÁO: {e.q50.isna().sum():,} điểm không có dự báo: {e[e.q50.isna()].groupby("model").size().to_dict()}')
     m = metrics.report(e[(e.available_mask > 0) & e.q50.notna()])
 
-    out = ROOT / 'runs' / f'{pd.Timestamp.now():%Y%m%d-%H%M%S}_{"-".join(names)}{"_smoke" if smoke else ""}'
+    drop = cfg['features'].get('drop')  # ablation: tên run không khớp latest_runs nên không lẫn với run chính
+    out = ROOT / 'runs' / (f'{pd.Timestamp.now():%Y%m%d-%H%M%S}_{"-".join(names)}'
+                           f'{"_drop-" + "-".join(drop) if drop else ""}{"_smoke" if smoke else ""}')
     out.mkdir(parents=True)
     e.to_parquet(out / 'forecasts.parquet', index=False)
     m.to_parquet(out / 'metrics.parquet')
@@ -175,6 +177,7 @@ def run(snap, cfg, names, smoke=False):
     md = [f'# Backtest {out.name}', '', f'- Snapshot {snap.name}; {st.csyt_id.nunique()} CSYT, {len(st)} chuỗi (tập chặt)',
           f'- Gốc validation: {", ".join(sets["val"]) or "không"}; test: {", ".join(sets["test"]) or "không"}; '
           f'horizon {cfg["features"]["horizon"]} ngày',
+          f'- Nhóm feature lgbm bỏ đi: {", ".join(drop) if drop else "không"}',
           f'- Thời gian (giây/gốc, trung bình): {timing.groupby("model").seconds.mean().round(1).to_dict()}', '']
     for name, s in m.groupby(level='slice', sort=False):
         md += [f'## {name}', '', '```', s.droplevel('slice').round(3).to_string(), '```', '']

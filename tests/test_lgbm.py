@@ -49,3 +49,17 @@ def test_saved_models_reproduce_forecast(tmp_path):
     q = np.column_stack([lgb.Booster(model_file=tmp_path / f'lgbm_{k}.txt').predict(X[pred]) for k in ('q10', 'q50', 'q90')])
     q = np.sort(np.clip(q, 0, None), axis=1) * lv[pred, None]
     np.testing.assert_allclose(out[['q10', 'q50', 'q90']].to_numpy(), q, rtol=1e-6)
+
+
+
+def test_drop_feature_groups():
+    _, df, st, _ = build(False)
+    full = lgbm.design(df, st, CUT, H, 2)[0]
+    X, _, lv, _, pred, keys = lgbm.design(df, st, CUT, H, 2, drop=('holiday', 'weather', 'clim'))
+    gone = [k for k in full if k in lgbm.HOLIDAY or k.startswith(('w_', 'clim_'))]
+    assert gone and set(X.columns) == set(full.columns) - set(gone)
+    d = CUT + pd.Timedelta(days=9)
+    row = np.flatnonzero(pred & (keys.unique_id == 'a|tong') & (keys.ds == d))[0]
+    assert np.isclose(X.last_year[row] * lv[row], df.set_index(['unique_id', 'ds']).y[('a|tong', d - pd.Timedelta(days=364))])
+    with pytest.raises(ValueError):
+        lgbm.design(df, st, CUT, H, 2, drop=('nope',))
