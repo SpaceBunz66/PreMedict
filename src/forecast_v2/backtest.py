@@ -154,7 +154,7 @@ def final(snap, cfg, names):
     print(f'Đã ghi {out}')
 
 
-def run(snap, cfg, names, smoke=False):
+def run(snap, cfg, names, smoke=False, tag=''):
     unknown = set(names) - set(MODELS)
     if unknown:
         raise ValueError(f'Model chưa có: {sorted(unknown)}; có: {sorted(MODELS)}')
@@ -169,10 +169,11 @@ def run(snap, cfg, names, smoke=False):
 
     drop = cfg['features'].get('drop')  # ablation: tên run không khớp latest_runs nên không lẫn với run chính
     out = ROOT / 'runs' / (f'{pd.Timestamp.now():%Y%m%d-%H%M%S}_{"-".join(names)}'
-                           f'{"_drop-" + "-".join(drop) if drop else ""}{"_smoke" if smoke else ""}')
+                           f'{"_drop-" + "-".join(drop) if drop else ""}{"_" + tag if tag else ""}{"_smoke" if smoke else ""}')
     out.mkdir(parents=True)
     e.to_parquet(out / 'forecasts.parquet', index=False)
     m.to_parquet(out / 'metrics.parquet')
+    (out / 'config.yaml').write_text(yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False), encoding='utf-8')
     sets = {k: [f'{c:%d/%m/%Y}' for c, v in sorted(cuts.items()) if v == k] for k in ('val', 'test')}
     md = [f'# Backtest {out.name}', '', f'- Snapshot {snap.name}; {st.csyt_id.nunique()} CSYT, {len(st)} chuỗi (tập chặt)',
           f'- Gốc validation: {", ".join(sets["val"]) or "không"}; test: {", ".join(sets["test"]) or "không"}; '
