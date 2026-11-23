@@ -70,9 +70,9 @@ models:
     random_seed: 0
 
 report:                     # A7: run trong runs/ dùng cho báo cáo tổng (lệnh report); sửa khi chạy lại backtest
-  main: 20261119-114722_snaive7-mean4-lgbm-prophet_prod-prophet_clean          # mọi model trừ TiDE, val + test
+  main: 20261123-161154_snaive7-mean4-lgbm-prophet_prod-prophet_clean          # mọi model trừ TiDE, val + test
   tide: [20261121-142639_tide_a3-s2000, 20261122-084951_tide_a3-s2000-test]    # TiDE s2000 (A3): val, test
-  ablation:                 # A2: nhãn -> run lgbm bỏ nhóm feature (A3 đầy đủ = main)
+  ablation:                 # A2: nhãn -> run lgbm bỏ nhóm feature (A3 đầy đủ = main); chạy trước bản sửa q50 (146f590)
     bỏ w_* (giữ clim_*): 20261121-031329_lgbm_drop-weather
     A1 lịch + lễ Tết: 20261121-034354_lgbm_drop-weather-clim
     A0 chỉ lịch: 20261121-041355_lgbm_drop-holiday-weather-clim
