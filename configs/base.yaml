@@ -60,6 +60,7 @@ models:
              bagging_fraction: 0.7, bagging_freq: 1, lambda_l2: 1.0, max_bin: 127, seed: 0}
   tide:                     # plan §P6; neuralforecast, CPU. Early stopping giữ lại horizon ngày cuối trước gốc làm validation
     input_size: 56
+    hidden_size: 512          # mặc định của TiDE; ghi ra để --set đổi được (--set chỉ nhận khóa có sẵn)
     max_steps: 1000
     val_check_steps: 50
     early_stop_patience_steps: 5

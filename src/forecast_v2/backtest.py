@@ -6,7 +6,6 @@ importance.parquet (model có feature importance).
 import hashlib
 import importlib
 import json
-import re
 import shutil
 import subprocess
 import time
@@ -86,9 +85,10 @@ def load(snap, cfg, smoke=False):
 
 
 def latest_runs(name):
-    """Các run backtest đủ gốc (không smoke) có model name, cũ tới mới."""
-    return sorted(p for p in (ROOT / 'runs').glob('*') if re.search(rf'[_-]{name}(-|$)', p.name)
-                  and not p.name.endswith('_smoke') and (p / 'metrics.md').exists())
+    """Các run backtest chính (không drop, tag, smoke) đã xong, có model name, cũ tới mới. Tên run: <giờ>_<model-model…>,
+    mọi hậu tố bắt đầu bằng '_' nên làm phần sau '_' đầu tiên không còn là danh sách model."""
+    return sorted(p for p in (ROOT / 'runs').glob('*_*') if (p / 'metrics.md').exists()
+                  and name in (m := p.name.split('_', 1)[1].split('-')) and set(m) <= set(MODELS))
 
 
 def calibration(names):
@@ -158,6 +158,10 @@ def run(snap, cfg, names, smoke=False, tag=''):
     unknown = set(names) - set(MODELS)
     if unknown:
         raise ValueError(f'Model chưa có: {sorted(unknown)}; có: {sorted(MODELS)}')
+    drop = cfg['features'].get('drop')  # ablation: tên run không khớp latest_runs nên không lẫn với run chính
+    out = ROOT / 'runs' / (f'{pd.Timestamp.now():%Y%m%d-%H%M%S}_{"-".join(names)}'
+                           f'{"_drop-" + "-".join(drop) if drop else ""}{"_" + tag if tag else ""}{"_smoke" if smoke else ""}')
+    out.mkdir(parents=True)  # tạo trước khi tính: tên sai (vd. tag có ':') báo lỗi ngay, không mất nhiều giờ chạy
     b = cfg['backtest']
     st, long, daily = load(snap, cfg, smoke)
 
@@ -167,10 +171,6 @@ def run(snap, cfg, names, smoke=False, tag=''):
         print(f'CẢNH BÁO: {e.q50.isna().sum():,} điểm không có dự báo: {e[e.q50.isna()].groupby("model").size().to_dict()}')
     m = metrics.report(e[(e.available_mask > 0) & e.q50.notna()])
 
-    drop = cfg['features'].get('drop')  # ablation: tên run không khớp latest_runs nên không lẫn với run chính
-    out = ROOT / 'runs' / (f'{pd.Timestamp.now():%Y%m%d-%H%M%S}_{"-".join(names)}'
-                           f'{"_drop-" + "-".join(drop) if drop else ""}{"_" + tag if tag else ""}{"_smoke" if smoke else ""}')
-    out.mkdir(parents=True)
     e.to_parquet(out / 'forecasts.parquet', index=False)
     m.to_parquet(out / 'metrics.parquet')
     (out / 'config.yaml').write_text(yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False), encoding='utf-8')

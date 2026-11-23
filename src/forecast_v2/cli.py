@@ -25,10 +25,13 @@ def main():
     p.add_argument('--smoke', action='store_true', help='backtest/tune: 20 CSYT, 2 chỉ tiêu, 1 gốc (backtest.smoke)')
     p.add_argument('--drop', default='', help='backtest: nhóm feature lgbm bỏ đi (holiday, weather, clim), ablation A2')
     p.add_argument('--set', action='append', default=[], metavar='KHÓA=GIÁ_TRỊ',
-                   help='ghi đè config, vd. models.tide.max_steps=3000 hoặc backtest.test=[] (giá trị đọc như YAML)')
+                   help='backtest (kèm --tag): ghi đè khóa có sẵn trong config, vd. models.tide.max_steps=3000 hoặc '
+                        'backtest.test=[] (giá trị đọc như YAML)')
     p.add_argument('--tag', default='', help='backtest: hậu tố tên run; run có tag không bị calibrate/train-final chọn')
     p.add_argument('--trials', type=int, default=10, help='tune: số trial chạy thêm; 0 = chỉ in bảng hội tụ')
     args = p.parse_args()
+    if args.set and (args.command != 'backtest' or not args.tag):  # lệnh khác ghi đè file snapshot dùng chung
+        p.error('--set chỉ dùng cho backtest, kèm --tag (run thử không bị calibrate/train-final chọn)')
     if args.command == 'extract':
         extract.run(args.snapshot)
         return
@@ -41,7 +44,9 @@ def main():
         *path, last = key.split('.')
         d = cfg
         for k in path:
-            d = d[k]  # khóa cha phải có sẵn (bắt lỗi gõ sai đường dẫn); khóa lá có thể mới, vd. hidden_size
+            d = d.get(k, {})
+        if last not in d:  # gõ sai tên khóa: báo ngay, không chạy âm thầm với giá trị cũ
+            p.error(f'--set: không có khóa {key} trong {args.config}')
         d[last] = yaml.safe_load(value)
     snap = DATA_DIR / args.snapshot if args.snapshot else max(DATA_DIR.glob('20??-??-??'))
     if args.command == 'backtest':
