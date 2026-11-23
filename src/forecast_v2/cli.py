@@ -2,8 +2,10 @@
        python -m forecast_v2.cli backtest --models snaive7,mean4 [--smoke] [--drop weather,clim]  # --drop: ablation lgbm
        python -m forecast_v2.cli backtest --models tide --set models.tide.max_steps=3000 --set backtest.test=[] --tag a3
        python -m forecast_v2.cli train-final --models lgbm
+       python -m forecast_v2.cli train-far [--start YYYY-MM-DD]   # dự báo xa khi dữ liệu dừng trước start (mặc định hôm nay)
        python -m forecast_v2.cli tune [--trials 10] [--smoke]   # chạy lại = chạy tiếp study
-       python -m forecast_v2.cli calibrate --models lgbm,tide   # A5: hệ số khoảng tin cậy từ run backtest mới nhất"""
+       python -m forecast_v2.cli calibrate --models lgbm,tide   # A5: hệ số khoảng tin cậy từ run backtest mới nhất
+       python -m forecast_v2.cli report                         # A7: báo cáo tổng từ các run trong base.yaml (report)"""
 import argparse
 import sys
 
@@ -18,7 +20,7 @@ def main():
         stream.reconfigure(encoding='utf-8')  # stderr: thanh tiến độ tqdm
     p = argparse.ArgumentParser(prog='forecast_v2')
     p.add_argument('command', choices=['extract', 'quality', 'facilities', 'weather', 'features', 'backtest',
-                                        'train-final', 'tune', 'calibrate'])
+                                        'train-final', 'train-far', 'tune', 'calibrate', 'report'])
     p.add_argument('--snapshot', help='thư mục con của data/; mặc định: hôm nay (extract), mới nhất (quality)')
     p.add_argument('--config', default=ROOT / 'configs' / 'base.yaml')
     p.add_argument('--models', default='snaive7,mean4', help='backtest: tên model, cách nhau bởi dấu phẩy')
@@ -29,6 +31,7 @@ def main():
                         'backtest.test=[] (giá trị đọc như YAML)')
     p.add_argument('--tag', default='', help='backtest: hậu tố tên run; run có tag không bị calibrate/train-final chọn')
     p.add_argument('--trials', type=int, default=10, help='tune: số trial chạy thêm; 0 = chỉ in bảng hội tụ')
+    p.add_argument('--start', help='train-far: ngày đầu tiên cần dự báo (YYYY-MM-DD), mặc định hôm nay')
     args = p.parse_args()
     if args.set and (args.command != 'backtest' or not args.tag):  # lệnh khác ghi đè file snapshot dùng chung
         p.error('--set chỉ dùng cho backtest, kèm --tag (run thử không bị calibrate/train-final chọn)')
@@ -58,9 +61,16 @@ def main():
     if args.command == 'train-final':
         backtest.final(snap, cfg, args.models.split(','))
         return
+    if args.command == 'train-far':
+        backtest.far(snap, cfg, args.start)
+        return
     if args.command == 'tune':
         from forecast_v2 import tune  # optuna + lightgbm: chỉ import khi cần
         tune.run(snap, cfg, args.trials, args.smoke)
+        return
+    if args.command == 'report':
+        from forecast_v2 import report  # matplotlib + lightgbm: chỉ import khi cần
+        report.run(cfg)
         return
     {'quality': quality, 'facilities': facilities, 'weather': weather, 'features': features}[args.command].run(snap, cfg)
 

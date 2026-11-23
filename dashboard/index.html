@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Khám chữa bệnh theo ngày</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+<script src="data.js"></script>
+<style>
+  :root { --bg: #f3f5f9; --card: #fff; --text: #222; --muted: #6b7280; --line: #e3e7ee; --brand: #1a73f0; --btn: #1658e0; --input: #fff; }
+  body.dark { --bg: #121722; --card: #1c2230; --text: #e6e9ef; --muted: #9aa3b2; --line: #2c3445; --brand: #1b4fb5; --btn: #2a62d6; --input: #1c2230; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px 'Segoe UI', Roboto, Arial, sans-serif; }
+  .top { background: var(--brand); color: #fff; display: flex; align-items: center; gap: 16px; padding: 0 28px; min-height: 52px; flex-wrap: wrap; }
+  .crumb { flex: 1; font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .crumb span { opacity: .95; } .crumb b { text-decoration: underline; }
+  .clock { font-weight: 700; font-size: 19px; letter-spacing: 1.5px; }
+  .user { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+  .user i { width: 30px; height: 30px; border-radius: 50%; background: #fff; display: inline-block; }
+  .wrap { padding: 14px 14px 8px; }
+  h1 { font-size: 22px; font-weight: 400; margin: 6px 0 16px; }
+  .tools, .filters { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+  .ib { width: 47px; height: 42px; border: 0; border-radius: 4px; background: var(--btn); color: #fff; cursor: pointer; display: grid; place-items: center; }
+  .ib.off { opacity: .55; }
+  select, input[type=date] { height: 42px; border: 1px solid #c8ced8; border-radius: 3px; padding: 0 10px; font: inherit; font-size: 16px; background: var(--input); color: var(--text); }
+  .filters label { font-size: 16px; margin-left: 8px; }
+  .date { display: flex; } .date input { border-radius: 3px 0 0 3px; width: 152px; }
+  .date input::-webkit-calendar-picker-indicator { display: none; }
+  .date button { width: 46px; border: 0; border-radius: 0 3px 3px 0; background: var(--btn); color: #fff; cursor: pointer; }
+  #unit { width: 345px; max-width: 100%; }
+  .search { height: 42px; width: 315px; max-width: 100%; border: 2px solid #8fb4ff; border-radius: 3px; background: var(--btn); color: #fff; font: inherit; font-size: 17px; cursor: pointer; }
+  .main { display: grid; grid-template-columns: 275px 1fr 1fr; gap: 26px 46px; }
+  .kpis { grid-row: span 3; display: flex; flex-direction: column; gap: 18px; }
+  .kpi { background: var(--btn); color: #fff; border-radius: 6px; padding: 20px 10px; text-align: center; min-height: 122px; }
+  .kpi h3 { margin: 0 0 8px; font-size: 27px; } .kpi div { font-size: 20px; } .kpi small { display: block; margin-top: 6px; font-size: 13px; opacity: .85; }
+  .card { background: var(--card); box-shadow: 0 1px 5px rgba(0,0,0,.18); padding: 8px 6px 2px; height: 272px; display: flex; flex-direction: column; min-width: 0; }
+  .card h2 { margin: 2px 0 0; font-size: 19px; text-align: center; }
+  .card h2 em { font-style: normal; font-weight: 400; font-size: 12px; color: var(--muted); margin-left: 6px; }
+  .chart { flex: 1; min-height: 0; }
+  .note { margin: -6px 0 16px; padding: 10px 14px; background: var(--card); border-left: 4px solid #f5a623; font-size: 14px; line-height: 1.5; }
+  footer { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); padding: 14px 18px; }
+  @media (max-width: 1100px) { .main { grid-template-columns: 1fr; } .kpis { grid-row: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); } .kpi h3 { font-size: 19px; } .clock { font-size: 15px; } .crumb { font-size: 15px; } }
+  @media (max-width: 600px) { .top, .wrap { padding-left: 16px; padding-right: 16px; } .date input { width: 130px; } }
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="crumb">☰&nbsp;&nbsp;<span>Trang chủ</span> / <span>Dashboard</span> / <span>Dashboard Khám chữa bệnh</span> / <b>Khám chữa bệnh theo ngày</b></div>
+  <div class="clock" id="clock"></div>
+  <div class="user"><i></i>Demo LightGBM</div>
+</div>
+<div class="wrap">
+  <h1>KHÁM CHỮA BỆNH THEO NGÀY</h1>
+  <p class="note" id="note" hidden></p>
+  <div class="tools">
+    <button class="ib" id="full" title="Toàn màn hình"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg></button>
+    <button class="ib" id="dark" title="Giao diện tối"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+    <button class="ib" id="eye" title="Ẩn/hiện số liệu trên biểu đồ"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5C6 5 2 12 2 12s4 7 10 7 10-7 10-7-4-7-10-7zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"/><circle cx="12" cy="12" r="2"/></svg></button>
+    <label>Chọn màu</label>
+    <select id="pal"><option value="sys">Hệ thống</option><option value="alt">Tương phản</option></select>
+  </div>
+  <div class="filters">
+    <label for="from">Từ ngày</label>
+    <div class="date"><input type="date" id="from"><button onclick="from.showPicker()" aria-label="Chọn ngày bắt đầu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></button></div>
+    <label for="to">Đến ngày</label>
+    <div class="date"><input type="date" id="to"><button onclick="to.showPicker()" aria-label="Chọn ngày kết thúc"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></button></div>
+    <label for="unit">Đơn vị y tế</label>
+    <select id="unit"></select>
+    <button class="search" id="go">Tìm kiếm</button>
+  </div>
+  <div class="main">
+    <div class="kpis" id="kpis"></div>
+    <div class="card"><h2>Theo dõi lượt khám theo ngày</h2><div class="chart" id="c1"></div></div>
+    <div class="card"><h2>Theo dõi lượt ra/vào viện theo ngày</h2><div class="chart" id="c2"></div></div>
+    <div class="card"><h2>Theo dõi điều trị nội / ngoại trú theo ngày</h2><div class="chart" id="c3"></div></div>
+    <div class="card"><h2>Theo dõi khám chữa bệnh sử dụng BHYT<em>chưa có dự báo</em></h2><div class="chart" id="c4"></div></div>
+    <div class="card"><h2>Theo dõi đúng tuyến và trái tuyến theo ngày<em>chưa có dự báo</em></h2><div class="chart" id="c5"></div></div>
+    <div class="card"><h2>Theo dõi tình hình tai nạn thương tích<em>chưa có dự báo</em></h2><div class="chart" id="c6"></div></div>
+  </div>
+</div>
+<footer><span id="meta"></span><span>Nội trú, ngoại trú, cấp cứu: số thực tế chỉ tính trên các CSYT model có dự báo chỉ tiêu đó.</span></footer>
+
+<script>
+const D = window.DATA, NA = D.dates.length, NF = D.fdates.length, ALL = D.dates.concat(D.fdates);
+const $ = id => document.getElementById(id);
+const fmt = v => v == null ? '-' : Math.round(v).toLocaleString('en-US');
+const vi = v => v == null ? '—' : Math.round(v).toLocaleString('vi-VN');
+const dmy = s => s.split('-').reverse().join('/');
+const PAL = {
+  sys: { a1: '#1a4fd6', a2: '#0b1f5c', a3: '#2f9bff', f1: '#e53935', f2: '#f8a5a5', f3: '#f5a623', band: 'rgba(248,165,165,.38)' },
+  alt: { a1: '#0f766e', a2: '#1e293b', a3: '#14b8a6', f1: '#c026d3', f2: '#f0abfc', f3: '#f59e0b', band: 'rgba(240,171,252,.35)' },
+};
+const TN = [['tn_gt', 'TNGT'], ['tn_ld', 'TNLĐ'], ['tn_dn', 'TNĐN'], ['tn_bg', 'Bỏng'], ['tn_nd', 'NĐCL'], ['tn_bl', 'BLXĐ'],
+            ['tn_tt', 'TT'], ['tn_k', 'K']];  // tn_kxd (khong_ldo: khám không do tai nạn) không phải TNTT, bỏ
+const TN_COLORS = ['#1a4fd6', '#0b1f5c', '#19a7e0', '#f59e0b', '#7c3aed', '#4f46e5', '#22c55e', '#9ca3af'];
+const st = { dark: false, labels: true, pal: 'sys' };
+let charts = [];
+
+// --- bộ lọc ---
+$('from').min = $('to').min = ALL[0];
+$('from').max = $('to').max = ALL[ALL.length - 1];
+$('from').value = ALL[NA - 28];
+$('to').value = ALL[ALL.length - 1];
+$('unit').innerHTML = '<option value="all">Chọn tất cả</option>' + Object.entries(D.provinces).map(([m, name]) => {
+  const us = D.units.map((u, i) => [u, i]).filter(([u]) => u.tinh === m);
+  return `<optgroup label="${name} (${m})"><option value="t:${m}">Toàn tỉnh ${name} — ${us.length} CSYT</option>` +
+    us.map(([u, i]) => `<option value="${i}">${u.id} · ${u.name}</option>`).join('') + '</optgroup>';
+}).join('');
+$('meta').textContent = `Dự báo LightGBM · artifact ${D.meta.artifact} · số liệu thật tới ${dmy(D.meta.train_until)} · ` +
+  `dự báo ${dmy(D.fdates[0])} → ${dmy(D.fdates[NF - 1])} · ${D.meta.csyt} CSYT, ${D.meta.series} chuỗi`;
+// Số ngày không có số liệu giữa ngày thật cuối và ngày dự báo đầu (train-far); 0 = dự báo nối liền
+const GAP = Math.round((Date.parse(D.fdates[0]) - Date.parse(D.dates[NA - 1])) / 864e5) - 1;
+if (GAP > 0) {
+  const B = D.meta.backtest, n = v => v.toLocaleString('vi-VN', { maximumFractionDigits: 3 });
+  $('note').hidden = false;
+  $('note').innerHTML = `<b>Dự báo xa.</b> Số liệu thật trong DB dừng ở ${dmy(D.meta.train_until)} (ETL ngừng), nên dự báo ` +
+    `${dmy(D.fdates[0])} → ${dmy(D.fdates[NF - 1])} được tính thẳng từ ngày đó, bỏ qua ${GAP} ngày chưa có số liệu.` +
+    (B ? ` Sai số đo bằng cách làm y hệt cho năm trước (dự báo ${dmy(B.forecast[0])} → ${dmy(B.forecast[1])}, ` +
+         `${B.series} chuỗi): WAPE ${n(B.wape)} (cách "lấy cùng kỳ năm trước": ${n(B.wape_cung_ky_nam_truoc)}), ` +
+         `tỉ lệ số thật nằm trong khoảng tin cậy 80%: ${n(B.cover80)}.` : '') +
+    ((FB => FB.length ? ` Chuỗi có dưới 14 ngày số liệu dùng được trong 28 ngày trước ${dmy(D.meta.train_until)} (vd. ngoại ` +
+      `trú gãy ETL 02–05/2026) không đủ tin cậy để dự báo xa nên dùng số cùng kỳ năm trước: ` +
+      FB.map(([f, k]) => `${f} ${k} chuỗi`).join(', ') + '.' : '')(Object.entries(D.meta.cung_ky_nam_truoc || {})));
+}
+
+const pick = () => {
+  const v = $('unit').value;
+  return D.units.map((_, i) => i).filter(i => v === 'all' || (v[0] === 't' ? D.units[i].tinh === v.slice(2) : i === +v));
+};
+const sum = (arrs, n) => {
+  if (!arrs.length) return null;
+  const s = new Array(n).fill(0);
+  arrs.forEach(a => a.forEach((x, i) => { s[i] += x; }));
+  return s;
+};
+
+function view() {
+  // ngày rơi vào khoảng không có số liệu: lấy ngày gần nhất có trên trục
+  let a = ALL.findIndex(d => d >= $('from').value), b = ALL.findLastIndex(d => d <= $('to').value);
+  if (a < 0) a = 0;
+  if (b < 0) b = ALL.length - 1;
+  if (a > b) [a, b] = [b, a];
+  const ids = pick();
+  const span = (arr, off) => Array.from({ length: b - a + 1 }, (_, k) => {
+    const j = a + k - off;
+    return arr && j >= 0 && j < arr.length ? arr[j] : null;
+  });
+  const A = f => span(sum(ids.map(i => D.actual[i][f]).filter(Boolean), NA), 0);
+  // shortcut: khoảng tin cậy của tổng = tổng q10 … tổng q90 của từng chuỗi (rộng hơn phân vị thật của tổng); đủ cho demo.
+  const F = (f, q = 'q50') => span(sum(ids.map(i => D.forecast[i][f] && D.forecast[i][f][q]).filter(Boolean), NF), NA);
+  return { A, F, x: ALL.slice(a, b + 1), last: NA - 1 - a };
+}
+
+// --- biểu đồ ---
+function tip(ps) {
+  let s = `<b>${dmy(ps[0].axisValue)}</b>`;
+  for (const p of ps) {
+    if (p.seriesName[0] === '_' || p.value == null || p.value === '-') continue;
+    const v = p.data && p.data.lo != null ? `${fmt(p.data.lo)} – ${fmt(p.data.hi)}` : fmt(p.value);
+    s += `<br>${p.marker}${p.seriesName}: <b>${v}</b>`;
+  }
+  return s;
+}
+const lbl = () => ({ show: st.labels, position: 'top', fontSize: 11, fontWeight: 600, formatter: p => fmt(p.value) });
+const line = (name, data, color, o = {}) => ({ type: 'line', name, data, color, symbol: 'circle', symbolSize: 6,
+  label: lbl(), labelLayout: { hideOverlap: true }, ...o });
+const bar = (name, data, color, stack) => ({ type: 'bar', name, data, color, stack, barMaxWidth: 12,
+  label: lbl(), labelLayout: { hideOverlap: true } });
+const dashed = (name, data, color, symbol = 'circle') => line(name, data, color, { symbol, lineStyle: { type: 'dashed' } });
+// Vạch đứt tại ngày dự báo đầu khi trục nhảy qua khoảng không có số liệu
+const gapMark = V => GAP > 0 && V.x.includes(D.fdates[0]) && V.x[0] !== D.fdates[0] ? [{ type: 'line', name: '_gap', data: [],
+  markLine: { silent: true, symbol: 'none', lineStyle: { color: '#9ca3af', type: 'dashed' }, data: [{ xAxis: D.fdates[0] }],
+              label: { formatter: `bỏ qua ${GAP} ngày → ${dmy(D.fdates[0]).slice(0, 5)}`, fontSize: 10, color: '#6b7280',
+                       position: 'insideEndTop' } } }] : [];
+const opt = (V, series, legend = {}) => ({
+  backgroundColor: 'transparent', animation: false, series: series.concat(gapMark(V)),
+  legend: { top: 0, itemWidth: 14, itemHeight: 9, itemGap: 14, textStyle: { fontSize: 12 },
+            data: series.map(s => s.name).filter(n => n[0] !== '_'), ...legend },
+  grid: { left: 44, right: 14, top: legend.bottom != null ? 26 : 44, bottom: legend.bottom != null ? 46 : 22 },
+  tooltip: { trigger: 'axis', formatter: tip },
+  xAxis: { type: 'category', data: V.x, axisTick: { show: false },
+           axisLabel: { fontSize: 10, interval: V.x.length <= 45 ? 0 : 'auto',  // ghi tháng ở nhãn đầu, đầu tháng và sau khoảng trống
+                        formatter: (d, i) => i === 0 || d.endsWith('-01') || d === D.fdates[0] ? dmy(d).slice(0, 5) : +d.slice(8) } },
+  yAxis: { type: 'value', splitNumber: 2, axisLabel: { fontSize: 10, formatter: v => v >= 1000 ? v / 1000 + 'k' : v } },
+});
+
+function options(V) {
+  const P = PAL[st.pal];
+  const kham = V.A('luot_kham'), fk = V.F('luot_kham'), lo = V.F('luot_kham', 'q10'), hi = V.F('luot_kham', 'q90');
+  if (!GAP && V.last >= 0 && V.last < fk.length) fk[V.last] = kham[V.last];  // nối đường dự báo vào điểm thực tế cuối
+  const none = { symbol: 'none', lineStyle: { opacity: 0 }, label: { show: false }, stack: 'ci', z: 1 };
+  const tong = V.A('tong'), bh = V.A('bhyt');
+  return [
+    opt(V, [
+      line('_lo', lo, P.f2, none),
+      line('Khoảng tin cậy', hi.map((h, i) => h == null ? null : { value: h - lo[i], lo: lo[i], hi: h }), P.f2,
+           { ...none, areaStyle: { color: P.band } }),
+      line('Lượt khám thực tế', kham, P.a1),
+      dashed('Dự báo', fk, P.f1),
+    ], { top: null, bottom: 4, data: ['Lượt khám thực tế', { name: 'Khoảng tin cậy', icon: 'rect' }, 'Dự báo'] }),
+    opt(V, [
+      bar('Lượt vào viện', V.A('luot_vao'), P.a1, 'vao'),
+      bar('Lượt ra viện', V.A('luot_ra'), P.a2, 'ra'),
+      bar('Dự báo ra viện', V.F('tong'), P.f1, 'ra'),  // luot_ra = tong ở 100% số dòng (audit) nên dùng dự báo tong
+    ]),
+    opt(V, [
+      bar('Khám bệnh', kham, P.a1, 'k'), bar('Nội trú', V.A('noi_tru'), P.a2, 'n'), bar('Ngoại trú', V.A('ngoai_tru'), P.a3, 'g'),
+      bar('Dự báo khám bệnh', fk.map((v, i) => i === V.last ? null : v), P.f2, 'k'),
+      bar('Dự báo nội trú', V.F('noi_tru'), P.f1, 'n'), bar('Dự báo ngoại trú', V.F('ngoai_tru'), P.f3, 'g'),
+    ]),
+    opt(V, [
+      line('Số hồ sơ có BHYT', bh, P.a1, { symbol: 'diamond', symbolSize: 8 }),
+      line('Số hồ sơ không có BHYT', tong.map((t, i) => t == null ? null : t - bh[i]), P.a2, { symbol: 'diamond', symbolSize: 8 }),
+    ]),
+    opt(V, [
+      line('Lượt đúng tuyến', V.A('dung_tuyen'), P.a1, { symbol: 'diamond', symbolSize: 8 }),
+      line('Lượt trái tuyến', V.A('trai_tuyen'), P.a2, { symbol: 'diamond', symbolSize: 8 }),
+    ]),
+    opt(V, TN.map(([f, name], k) => line(name, V.A(f), TN_COLORS[k], { symbolSize: 5 }))),
+  ];
+}
+
+function kpis(V) {
+  const total = arr => arr.some(v => v != null) ? arr.reduce((s, v) => s + (v || 0), 0) : null;
+  const fcDays = V.F('tong').filter(v => v != null).length;
+  $('kpis').innerHTML = [['Tổng hồ sơ', 'tong', 'tong'], ['Vào viện', 'luot_vao'], ['Ra viện', 'luot_ra', 'tong'],
+                         ['Lượt cấp cứu', 'cap_cuu', 'cap_cuu'], ['Lượt tử vong', 'tu_vong']].map(([name, f, ff]) => {
+    const fc = ff && fcDays ? total(V.F(ff)) : null;
+    return `<div class="kpi"><h3>${name}</h3><div>${vi(total(V.A(f)))}</div>` +
+      (fc != null ? `<small>Dự báo ${fcDays} ngày: ${vi(fc)}</small>` : '') + '</div>';
+  }).join('');
+}
+
+function render() {
+  const V = view();
+  if (!charts.length) charts = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6'].map(id => echarts.init($(id), st.dark ? 'dark' : null));
+  options(V).forEach((o, k) => charts[k].setOption(o, true));
+  kpis(V);
+}
+function rebuild() { charts.forEach(c => c.dispose()); charts = []; render(); }
+
+$('go').onclick = render;
+$('pal').onchange = e => { st.pal = e.target.value; render(); };
+$('eye').onclick = () => { st.labels = !st.labels; $('eye').classList.toggle('off', !st.labels); render(); };
+$('dark').onclick = () => { st.dark = !st.dark; document.body.classList.toggle('dark', st.dark); rebuild(); };
+$('full').onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+window.addEventListener('resize', () => charts.forEach(c => c.resize()));
+
+const DAYS = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+const tick = () => {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  $('clock').textContent = `${DAYS[d.getDay()]}, ${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ` +
+    `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+};
+tick(); setInterval(tick, 1000);
+render();
+</script>
+</body>
+</html>

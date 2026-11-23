@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import time
 
+import numpy as np
 import pandas as pd
 import yaml
 from tqdm import tqdm
@@ -140,18 +141,104 @@ def final(snap, cfg, names):
 
     if runs:
         shutil.copy(runs[-1] / 'metrics.md', out / 'backtest_metrics.md')
-    git = lambda *a: subprocess.run(['git', '-C', str(ROOT), *a], capture_output=True, text=True).stdout.strip()
     manifest = {'model': 'lgbm', 'snapshot': snap.name, 'train_until': f'{cutoff:%Y-%m-%d}',
                 'forecast': [f'{fc.ds.min():%Y-%m-%d}', f'{fc.ds.max():%Y-%m-%d}'],
                 'csyt': int(st.csyt_id.nunique()), 'series': len(st), 'train_rows': train_rows,
-                'seconds': round(seconds), 'git_commit': git('rev-parse', 'HEAD'),
-                'git_dirty': bool(git('status', '--porcelain', '--untracked-files=no')),
-                'calendar_sha256': hashlib.sha256(HOLIDAYS_CSV.read_bytes()).hexdigest(),
-                'backtest_run': runs[-1].name if runs else None}
+                'seconds': round(seconds), **provenance(), 'backtest_run': runs[-1].name if runs else None}
+    save(out, manifest, cfg)
+
+
+def provenance():
+    """Commit code và sha256 lịch lễ, ghi vào manifest của artifact."""
+    git = lambda *a: subprocess.run(['git', '-C', str(ROOT), *a], capture_output=True, text=True).stdout.strip()
+    return {'git_commit': git('rev-parse', 'HEAD'), 'git_dirty': bool(git('status', '--porcelain', '--untracked-files=no')),
+            'calendar_sha256': hashlib.sha256(HOLIDAYS_CSV.read_bytes()).hexdigest()}
+
+
+def save(out, manifest, cfg):
     (out / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
     (out / 'config.yaml').write_text(yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False), encoding='utf-8')
     print(json.dumps(manifest, ensure_ascii=False, indent=2))
     print(f'Đã ghi {out}')
+
+
+def far(snap, cfg, start=None):
+    """train-far: dữ liệu thật dừng ở ngày cuối có dữ liệu (ETL ngừng) nên dự báo start → start + horizon − 1 (mặc
+    định từ hôm nay) thẳng từ ngày đó: LightGBM như train-final, chỉ đổi dải h thành gap + 1 .. gap + horizon.
+    Sai số đo bằng cách làm y hệt lùi 364 ngày (cùng thứ, cùng mùa năm trước), so với naive "cùng kỳ năm trước".
+    q10/q90 chưa hiệu chỉnh (hệ số A5 chỉ fit cho h ≤ 30); độ phủ đo ở backtest.
+    Lưu artifacts/lgbm_far/<run_id>/: 3 model, forecast.csv, backtest.csv, importance.csv, config.yaml, manifest.json."""
+    h = cfg['features']['horizon']
+    start = pd.Timestamp(start or pd.Timestamp.today().normalize())
+    last = (f := pd.read_parquet(snap / 'features.parquet', columns=['ds', 'y'])).ds[f.y.notna()].max()
+    min_h = (start - last).days
+    if min_h < 1:
+        raise ValueError(f'start {start:%d/%m/%Y} phải sau ngày cuối có dữ liệu {last:%d/%m/%Y}')
+    cf = cfg | {'features': cfg['features'] | {'horizon': min_h + h - 1, 'min_h': min_h}}
+    out = ROOT / 'artifacts' / 'lgbm_far' / f'{pd.Timestamp.now():%Y%m%d-%H%M%S}'
+    out.mkdir(parents=True)
+    daily, long, st, last_day = features.build(snap, cf)  # bảng kéo dài tới start + horizon (không ghi đè file)
+    assert last_day == last, (last_day, last)
+    st = st[st.strict].reset_index(drop=True)  # như load(): chỉ tập chặt
+    long = long[long.unique_id.isin(st.unique_id)]
+
+    cut = last - pd.Timedelta(days=364)
+    df, fs = features.fold(long, st, daily, cut, cf)
+    fc, _ = thin_fallback(model('lgbm')(df, fs, cut, cf), df, cut)
+    e = df.loc[df.ds >= cut + pd.Timedelta(days=min_h), ['unique_id', 'ds', 'y', 'available_mask']].merge(
+        fc, on=['unique_id', 'ds'], how='left')
+    e['naive'] = last_year(df, cut, e)
+    e = e[(e.available_mask > 0) & e.q50.notna() & e.naive.notna()].assign(
+        set='backtest', scale=lambda d: d.unique_id.map(metrics.mase_scale(df, cut)))
+    s = metrics.score(pd.concat([e.assign(model='lgbm_far'),
+                                 e.assign(model='cung_ky_nam_truoc', q50=e.naive, q10=np.nan, q90=np.nan)]))
+    s.to_csv(out / 'backtest.csv')
+    print(s.round(3).to_string())
+
+    df, fs = features.fold(long, st, daily, last, cf)
+    t0 = time.perf_counter()
+    fc = model('lgbm')(df, fs, last, cf, save_to=out)
+    seconds = time.perf_counter() - t0
+    assert len(fc) == len(st) * h and fc.q50.notna().all() and fc.ds.min() == start, 'thiếu dự báo cho một số chuỗi'
+    train_rows = fc.attrs['train_rows']
+    fc.attrs['importance'].sort_values(ascending=False).rename('gain').to_csv(out / 'importance.csv')
+    fc, thin = thin_fallback(fc, df, last)
+    fc = st[['unique_id', 'ma_tinh', 'csyt_id', 'field']].merge(fc, on='unique_id').drop(columns='unique_id')
+    fc.round(2).to_csv(out / 'forecast.csv', index=False)
+    b = s.xs('backtest', level='set')
+    manifest = {'model': 'lgbm_far', 'snapshot': snap.name, 'train_until': f'{last:%Y-%m-%d}',
+                'forecast': [f'{fc.ds.min():%Y-%m-%d}', f'{fc.ds.max():%Y-%m-%d}'], 'gap_days': min_h - 1,
+                'cung_ky_nam_truoc': pd.Series(thin).str.split('|').str[1].value_counts().to_dict(),
+                'csyt': int(st.csyt_id.nunique()), 'series': len(st), 'train_rows': train_rows,
+                'seconds': round(seconds), **provenance(),
+                'backtest': {'train_until': f'{cut:%Y-%m-%d}', 'forecast': [f'{e.ds.min():%Y-%m-%d}', f'{e.ds.max():%Y-%m-%d}'],
+                             'series': int(e.unique_id.nunique()), 'points': int(b.n.iloc[0]),
+                             'wape': round(b.wape['lgbm_far'], 4), 'wape_cung_ky_nam_truoc': round(b.wape['cung_ky_nam_truoc'], 4),
+                             'bias': round(b.bias['lgbm_far'], 4), 'cover80': round(b.cover80['lgbm_far'], 4)}}
+    save(out, manifest, cf)
+
+
+def last_year(df, cutoff, keys):
+    """y cùng kỳ năm trước (lùi 364 ngày nên cùng thứ; chỉ ngày mask = 1 tới cutoff) cho các dòng keys [unique_id, ds].
+    Ngày thiếu lấy trung bình các ngày cùng thứ của chuỗi trong keys."""
+    past = df[(df.ds <= cutoff) & (df.available_mask > 0)].set_index(['unique_id', 'ds']).y
+    v = pd.Series(past.reindex(pd.MultiIndex.from_arrays([keys.unique_id, keys.ds - pd.Timedelta(days=364)])).to_numpy(),
+                  index=keys.index)
+    return v.fillna(v.groupby([keys.unique_id, keys.ds.dt.dayofweek]).transform('mean'))
+
+
+def thin_fallback(fc, df, cutoff, min_days=14):
+    """Dự báo xa: chuỗi có < min_days ngày mask = 1 trong 28 ngày tới gốc thì gốc không đủ tin cậy (ngoai_tru gãy ETL
+    02–05/2026: model ra gấp 4–12 lần cùng kỳ) -> q50 = cùng kỳ năm trước, q10/q90 giữ tỉ lệ với q50 của model.
+    Chuỗi không có số cùng kỳ giữ dự báo model. Trả về (dự báo, danh sách chuỗi đã thay)."""
+    recent = df[(df.ds > cutoff - pd.Timedelta(days=28)) & (df.ds <= cutoff)].groupby('unique_id').available_mask.sum()
+    thin = recent.index[recent < min_days]
+    sel = fc.unique_id.isin(thin)
+    q = ['q10', 'q50', 'q90']
+    k = (last_year(df, cutoff, fc[sel]) / fc.q50[sel]).where(fc.q50[sel] > 0).fillna(1)
+    fc = fc.copy()
+    fc.loc[sel, q] = fc.loc[sel, q].mul(k, axis=0)
+    return fc, sorted(fc.unique_id[sel].unique())
 
 
 def run(snap, cfg, names, smoke=False, tag=''):

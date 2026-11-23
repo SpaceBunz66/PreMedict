@@ -56,9 +56,10 @@ def last_year_shift(df):
     return np.where(near, gap, 364)
 
 
-def design(df, static, cutoff, horizon, step, drop=()):
+def design(df, static, cutoff, horizon, step, drop=(), min_h=1):
     """(X, y/level, level, mẫu train, mẫu dự báo). Gốc train: cutoff − step·k (k ≥ 1) với đích ≤ cutoff, mask đích = 1;
-    gốc dự báo: cutoff, h = 1..horizon. drop: tên nhóm trong GROUPS (bỏ holiday thì last_year lùi đúng 364 ngày)."""
+    gốc dự báo: cutoff, h = min_h..horizon (min_h > 1: dự báo xa khi dữ liệu dừng trước ngày cần dự báo).
+    drop: tên nhóm trong GROUPS (bỏ holiday thì last_year lùi đúng 364 ngày)."""
     if set(drop) - set(GROUPS):
         raise ValueError(f'Nhóm feature không có: {sorted(set(drop) - set(GROUPS))}; có: {sorted(GROUPS)}')
     df = df.sort_values(['unique_id', 'ds']).reset_index(drop=True)
@@ -66,9 +67,11 @@ def design(df, static, cutoff, horizon, step, drop=()):
     off = df.groupby('unique_id').cumcount().to_numpy()  # vị trí trong chuỗi
     ym = df.y.where(df.available_mask > 0).to_numpy('float32')
     lag = (cutoff - df.ds).dt.days.to_numpy()
-    origins = np.flatnonzero((lag >= 0) & (lag % step == 0) & (off >= 28))
-    h = np.tile(np.arange(1, horizon + 1), len(origins))
-    i = np.repeat(origins, horizon)
+    # Gốc cần ≥ min_h ngày lịch sử: trước đó là giai đoạn CSYT mới lên hệ thống, mức gần 0 nên y/mức sau 6 tháng
+    # lên tới hàng chục, hàng trăm (p90 gốc < 90 ngày: 61; gốc ≥ 169 ngày: 1,6) và model dự báo xa học sai.
+    origins = np.flatnonzero((lag >= 0) & (lag % step == 0) & (off >= max(28, min_h)))
+    h = np.tile(np.arange(min_h, horizon + 1), len(origins))
+    i = np.repeat(origins, horizon - min_h + 1)
     t = i + h  # mỗi chuỗi kéo dài tới cutoff + horizon (features.fold) nên đích luôn cùng chuỗi
     keep = (lag[i] == 0) | ((lag[t] >= 0) & (df.available_mask.to_numpy()[t] > 0))
     i, t, h = i[keep], t[keep], h[keep]
@@ -105,7 +108,7 @@ def forecast(df, static, cutoff, cfg, save_to=None):
     """save_to: thư mục lưu 3 model (lgbm_q10/q50/q90.txt) cho train-final."""
     c = cfg['models']['lgbm']
     X, y, lv, train, pred, keys = design(df, static, cutoff, cfg['features']['horizon'], c['origin_step'],
-                                          cfg['features'].get('drop', ()))
+                                          cfg['features'].get('drop', ()), cfg['features'].get('min_h', 1))
     Xt, yt, wt = X[train], y[train], lv[train]
     with tqdm(total=c['rounds'] + 2 * c['interval_rounds'], desc='lgbm q50+q10+q90', unit='vòng', leave=False) as bar:
         models = {'q50': _fit(Xt, yt, wt, c['objective'], 0.5, c['params'], c['rounds'], bar)} | {

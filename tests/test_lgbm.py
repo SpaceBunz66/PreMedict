@@ -51,6 +51,15 @@ def test_saved_models_reproduce_forecast(tmp_path):
     np.testing.assert_allclose(out[['q10', 'q50', 'q90']].to_numpy(), q, rtol=1e-6)
 
 
+def test_design_min_h():
+    """Dự báo xa (train-far): mẫu train và mẫu dự báo chỉ có h = min_h..horizon; tra cứu vẫn đúng ngày."""
+    _, df, st, _ = build(False)
+    X, y, lv, train, pred, keys = lgbm.design(df, st, CUT, H, 2, min_h=5)
+    assert X.h.min() == 5 and pred.sum() == st.unique_id.nunique() * (H - 4)
+    assert (keys.ds[pred] >= CUT + pd.Timedelta(days=5)).all() and (keys.ds[train] <= CUT).all()
+    row = np.flatnonzero(pred & (keys.unique_id == 'a|tong') & (keys.ds == CUT + pd.Timedelta(days=9)))[0]
+    assert np.isclose(X.same_weekday[row] * lv[row], df.set_index(['unique_id', 'ds']).y[('a|tong', CUT - pd.Timedelta(days=5))])
+
 
 def test_drop_feature_groups():
     _, df, st, _ = build(False)

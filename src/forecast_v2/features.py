@@ -103,12 +103,17 @@ def fold(df, static, daily, cutoff, cfg):
     return df, st
 
 
-def run(snap, cfg):
+def build(snap, cfg):
+    """(daily thô, bảng long, static, ngày cuối có dữ liệu) từ các file của snapshot; bảng kéo dài horizon ngày."""
     daily, _ = clean.merge_provinces(clean.load_raw(snap))
-    long, st, last_day = table(daily, pd.read_parquet(snap / 'quality_report.parquet'),
-                               pd.read_parquet(snap / 'facilities_static.parquet'),
-                               pd.read_parquet(snap / 'weather_daily.parquet'),
-                               pd.read_parquet(snap / 'weather_clim.parquet'), cfg)
+    return daily, *table(daily, pd.read_parquet(snap / 'quality_report.parquet'),
+                         pd.read_parquet(snap / 'facilities_static.parquet'),
+                         pd.read_parquet(snap / 'weather_daily.parquet'),
+                         pd.read_parquet(snap / 'weather_clim.parquet'), cfg)
+
+
+def run(snap, cfg):
+    _, long, st, last_day = build(snap, cfg)
     long.to_parquet(snap / 'features.parquet', index=False)
     st.to_parquet(snap / 'features_static.parquet', index=False)
     past = long[long.ds <= last_day]
