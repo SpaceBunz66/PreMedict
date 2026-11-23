@@ -50,55 +50,60 @@ Người dùng chạy trên laptop ngày 21/11/2026. Chỉ đổi các tham số
 | **s2000** | max_steps 2000 | `20261121-142639_tide_a3-s2000` | 2.606 | 0,474 | 0,229 | 0,242 | **0,299** |
 | s3000 | max_steps 3000 | `20261121-164635_tide_a3-s3000` | 2.794 | 0,474 | 0,242 | 0,242 | 0,304 |
 | s3000-h256 | max_steps 3000, hidden_size 256 | `20261121-185718_tide_a3-s3000-h256` | 2.609 | 0,477 | 0,255 | 0,248 | 0,311 |
-| *lgbm (so sánh)* | config mục 3 | `20261119-114722_...` | | 0,304 | 0,219 | 0,263 | *0,2585* |
+| *lgbm (so sánh)* | config mục 3 | `20261123-161154_...` | | 0,300 | 0,221 | 0,264 | *0,2582* |
 
 - Step dừng thật (early stopping), theo gốc 15/01/25 · 30/09/25 · 30/11/25: s2000 800 · 2000 · 2000; s3000 800 · 2400 · 2000; s3000-h256 1000 · 2050 · 2350.
 - Ở gốc Tết 15/01/25, cả s1000, s2000 và s3000 đều dừng ở step 800 nên dự báo giống hệt nhau. Cửa sổ early stopping (16/12/2024 → 15/01/2025) không có Tết.
 - Chênh s2000/s3000 chỉ ở gốc 30/09 (0,229 so với 0,242): mức nhiễu train.
 - Chạy lại cùng cấu hình (run `-211306`, `-231955`) cho dự báo giống từng byte: TiDE seed 0 tái lập được. Hai run này đã xóa sau khi đối chiếu (23/11/2026).
-- Khoảng cách với LightGBM nằm ở Tết. Ngoài Tết ±21 ngày: tide 0,236–0,251, lgbm 0,242. Trong Tết ±21: tide 0,474, lgbm 0,304. Ngày lễ: 6,76 so với 0,89.
-- Cổng A4 (validation):
-  - (a) WAPE ≤ lgbm: 0,299 > 0,2585, không đạt;
-  - (b) trộn với lgbm giảm ≥ 0,5 điểm: tốt nhất 0,2577 (20% tide), chỉ −0,08 điểm, không đạt;
+- Khoảng cách với LightGBM nằm ở Tết. Ngoài Tết ±21 ngày: tide 0,236–0,251, lgbm 0,243. Trong Tết ±21: tide 0,474, lgbm 0,300. Ngày lễ: 6,76 so với 0,76.
+- Cổng A4 (validation; số lgbm đã cập nhật theo bản sửa q50 ở mục 6, kết luận không đổi):
+  - (a) WAPE ≤ lgbm: 0,299 > 0,2582, không đạt;
+  - (b) trộn với lgbm giảm ≥ 0,5 điểm: tốt nhất 0,2567 (10% tide), chỉ −0,15 điểm, không đạt;
   - (c) thắng rõ một chỉ tiêu: `cap_cuu` lgbm 0,344, tide 0,365–0,384, không đạt.
 
 ## 5. TiDE trên test (chỉ để báo cáo)
 
-Run `20261122-084951_tide_a3-s2000-test`: cấu hình s2000, 5 gốc test, 3.200 giây/gốc (tổng 4 giờ 27 phút). TiDE đã bị loại ở cổng A4 trên validation; số test dưới đây không dùng để chọn lại. lgbm lấy từ `20261119-114722_...`. cover80 của cả hai là trước hiệu chỉnh A5.
+Run `20261122-084951_tide_a3-s2000-test`: cấu hình s2000, 5 gốc test, 3.200 giây/gốc (tổng 4 giờ 27 phút). TiDE đã bị loại ở cổng A4 trên validation; số test dưới đây không dùng để chọn lại. lgbm lấy từ `20261123-161154_...` (bản sửa q50, mục 6). cover80 của cả hai là trước hiệu chỉnh A5.
 
 | Nhóm (test) | lgbm | tide |
 |---|---|---|
 | **WAPE tổng** | **0,256** | 0,273 |
-| Ngoài Tết ±21 | 0,237 | 0,256 |
-| Trong Tết ±21 | 0,324 | 0,334 |
-| Ngày lễ | 0,861 | 2,208 |
-| h 1–7 · 8–14 · 15–30 | 0,235 · 0,245 · 0,277 | 0,255 · 0,262 · 0,292 |
-| `cap_cuu` | 0,957 | 0,733 |
-| `ngoai_tru` | 0,399 | 0,378 |
-| `noi_tru` | 0,515 | 0,535 |
-| Bắc Ninh (24) | 0,284 | 0,251 |
-| Tổng tỉnh × chỉ tiêu | 0,165 | 0,193 |
-| cover80 | 0,681 | 0,650 |
+| Ngoài Tết ±21 | 0,238 | 0,256 |
+| Trong Tết ±21 | 0,322 | 0,334 |
+| Ngày lễ | 0,829 | 2,208 |
+| h 1–7 · 8–14 · 15–30 | 0,234 · 0,245 · 0,277 | 0,255 · 0,262 · 0,292 |
+| `cap_cuu` | 0,927 | 0,733 |
+| `ngoai_tru` | 0,404 | 0,378 |
+| `noi_tru` | 0,523 | 0,535 |
+| Bắc Ninh (24) | 0,285 | 0,251 |
+| Tổng tỉnh × chỉ tiêu | 0,164 | 0,193 |
+| cover80 | 0,758 | 0,650 |
 
 - Test xác nhận validation: lgbm tốt hơn tổng thể, ở mọi nhóm horizon và quanh Tết. TiDE vẫn yếu ở ngày lễ.
 - Trên test TiDE thắng ở `cap_cuu`, `ngoai_tru` và Bắc Ninh. Ở validation lgbm thắng `cap_cuu` (cổng A4c). Không đổi quyết định A4 vì dùng test để chọn là rò rỉ; ghi vào hạn chế và hướng tiếp (chuỗi nhỏ `cap_cuu` nhiễu, n = 1.145).
 
 ## 6. Test lần cuối và train-final (A7, 23/11/2026)
 
-- **Test lần cuối** của LightGBM là run `20261119-114722_...`: 5 gốc test chạy một lần với đúng config mục 3. Sau run này config không đổi (A1 giữ config, A2 chưa chốt bỏ nhóm nào); code lgbm chỉ thêm thanh tiến độ và cờ `--drop` (mặc định không bỏ gì), không đổi kết quả. Vì vậy không chạy lại.
-- **Train-final** `artifacts/lgbm/20261123-093332` (commit `3451bf2`, git_dirty false):
+- **Test lần cuối** của LightGBM là run `20261123-161154_...`: đủ 5 model, 8 gốc, config mục 3. Run 19/11 (`20261119-114722_...`) đã xóa vì chạy với lỗi phân vị dưới đây; ngoài lgbm, mọi model trong run mới giống hệt run 19/11.
+- **Sửa q50 của LightGBM (23/11/2026, commit `146f590`, `689309f`).**
+  - Lỗi: code cũ sắp xếp 3 dự báo q10/q50/q90 rồi lấy giá trị giữa làm q50. Khi q50 của tweedie thấp hơn model phân vị (12% điểm backtest, 36% ngày lễ), q50 bị thay bằng số của model q10/q90, thường là mức ngày thường.
+  - Sửa: giữ q50 của tweedie. Khoảng giữ khoảng cách q10/q90 tới trung vị sau sắp xếp, dời về q50; không chéo thì đúng q10/q90 của model. Cách kẹp min/max (thử trước) làm phía dưới rộng 0 ở khoảng 10% điểm, hệ số A5 thành inf.
+  - Quyết định theo validation: ngày lễ 0,893 → 0,763, Tết ±21 0,304 → 0,300, tổng 0,2585 → 0,2582. Test: tổng 0,2564 → 0,2562, ngày lễ 0,861 → 0,829.
+  - Không chạy lại: 4 run ablation A2 (bản sửa đổi WAPE tổng 0,02 điểm, kết luận không đổi) và Optuna A1 (`tune.py` chỉ train model q50, vốn không sắp xếp).
+- **Train-final** `artifacts/lgbm/20261123-165545` (commit `fad98b8`; git_dirty true chỉ vì `dashboard/` và `docs/` đang sửa dở, `src/` và `configs/` sạch):
   - config mục 3, đủ bộ feature A3 (có `w_*` và `clim_*`);
-  - train trên toàn bộ dữ liệu tới 07/06/2026: 2.826.526 mẫu, 363 giây;
+  - train trên toàn bộ dữ liệu tới 07/06/2026: 2.826.526 mẫu, 370 giây;
   - dự báo 08/06 → 07/07/2026 cho 318 chuỗi (9.540 dòng `forecast.csv`, đủ q10/q50/q90);
-  - khoảng tin cậy hiệu chỉnh A5 bằng `interval_factors_lgbm.csv` của run `20261119-114722_...` (fit trên 3 gốc validation). Độ rộng (q90 − q10) trung bình tăng từ 0,59 lên 0,67 lần q50.
-- q50 giống hệt bản train-final 20/11 (`20261120-114258`, làm trước A5): model không đổi, chỉ khoảng tin cậy khác. Bản 20/11 đã xóa sau khi đối chiếu (23/11/2026).
+  - khoảng tin cậy hiệu chỉnh A5 bằng `interval_factors_lgbm.csv` của run `20261123-161154_...` (fit trên 3 gốc validation). Hệ số lo/hi theo h 1–7 · 8–14 · 15–30: 1,03/0,97 · 1,13/1,29 · 1,25/1,09. cover80 validation 0,75 → 0,80, test 0,76 → 0,82. Độ rộng (q90 − q10) trung bình 0,67 lần q50.
+- So với bản train-final trước bản sửa (`20261123-093332`, đã xóa): q50 đổi ở 1,5% số dòng, vì khoảng 08/06 → 07/07 hầu như không có ngày lễ; tổng q50 +0,04%.
 - Nếu chốt bỏ ERA5 (bộ feature A1) thì phải train-final lại. Lệnh `train-final` hiện chưa có cờ `--drop`, và hệ số A5 cũng phải lấy từ run A1.
 
 ## 7. Dự báo xa cho demo (train-far, 23/11/2026)
 
 Người dùng cần dashboard dự báo từ hôm nay (23/11/2026). Query read-only ngày 23/11/2026 xác nhận DB vẫn dừng: khoảng 2.000 CSYT báo cáo tới 05/06/2026, từ 08/06 chỉ còn 2–17 CSYT, ngày cuối có số là 18/06/2026. Vì vậy dự báo 23/11 → 22/12/2026 được tính thẳng từ ngày 07/06/2026, cách 168 ngày không có số liệu.
 
-- **Lệnh:** `train-far --start 2026-11-23` → `artifacts/lgbm_far/20261123-110548`.
+- **Lệnh:** `train-far --start 2026-11-23` → `artifacts/lgbm_far/20261123-170211` (sau bản sửa q50, mục 6). Bản đầu `20261123-110548` (trước bản sửa) giữ lại vì số chỉ tiêu suy ra bên dưới lấy từ bản đó.
 - **Model:** LightGBM như mục 3, đủ bộ feature A3, nhưng train với h = 169–198 thay cho 1–30 (`lgbm.design(min_h=...)`). Bảng feature được dựng lại trong bộ nhớ, kéo dài tới 22/12/2026; không ghi đè `features.parquet`.
 - **Gốc train phải có ≥ min_h ngày lịch sử.** Trước mốc đó là giai đoạn CSYT mới lên hệ thống: mức gần 0 nên tỉ lệ y sau 6 tháng / mức tại gốc cực lớn (p90 là 61 với gốc < 90 ngày, 13 với gốc 90–168 ngày, 1,6 với gốc ≥ 169 ngày). Khi chưa có quy tắc này, backtest cho WAPE 0,975 và bias +0,76.
 - **Thay bằng cùng kỳ năm trước:** chuỗi có dưới 14 ngày mask = 1 trong 28 ngày trước gốc thì q50 lấy số cùng kỳ năm trước (lùi 364 ngày); q10/q90 giữ tỉ lệ với q50 của model. Lần này áp cho 27 chuỗi `ngoai_tru`, do ETL gãy 02–05/2026: model cho các chuỗi này gấp 4–12 lần cùng kỳ (Hà Nội 01K61, 01I14, 01037…).
@@ -106,11 +111,11 @@ Người dùng cần dashboard dự báo từ hôm nay (23/11/2026). Query read-
 
   | | WAPE | bias | cover80 |
   |---|---|---|---|
-  | lgbm_far | **0,312** | +0,030 | 0,741 |
+  | lgbm_far | **0,315** | +0,031 | 0,760 |
   | cùng kỳ năm trước | 0,333 | +0,059 | – |
 
-  Để so sánh, dự báo 30 ngày thường (test) có WAPE 0,256.
-- **Bản cuối:** train trên các gốc tới 20/12/2025, 1.493.325 mẫu, 155 giây. Tỉ lệ q50 / cùng kỳ 2025 theo chỉ tiêu: `tong` 0,92, `luot_kham` 0,95, `noi_tru` 0,95, `cap_cuu` 1,00, `ngoai_tru` 1,00 (cùng kỳ năm trước).
+  Để so sánh, dự báo 30 ngày thường (test) có WAPE 0,256. Bản trước sửa q50: 0,312, +0,030, cover80 0,741.
+- **Bản cuối:** train trên các gốc tới 20/12/2025, 1.493.325 mẫu, 173 giây. Tỉ lệ q50 / cùng kỳ 2025 theo chỉ tiêu: `tong` 0,93, `luot_kham` 0,96, `noi_tru` 0,95, `cap_cuu` 1,00, `ngoai_tru` 1,00 (cùng kỳ năm trước). So với bản 110548: q50 đổi ở 4,5% số dòng, tổng `tong` 30 ngày 188.192 so với 186.188.
 - **Hạn chế:**
   - chỉ một lần backtest;
   - model backtest học từ ít dữ liệu hơn bản cuối (gốc tới 21/12/2024), nên số đo có thể hơi bi quan;
