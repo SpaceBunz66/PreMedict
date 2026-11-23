@@ -48,11 +48,13 @@ def test_saved_models_reproduce_forecast(tmp_path):
     X, _, lv, _, pred, _ = lgbm.design(df, st, CUT, H, FAST['models']['lgbm']['origin_step'])
     q = np.column_stack([lgb.Booster(model_file=tmp_path / f'lgbm_{k}.txt').predict(X[pred]) for k in ('q10', 'q50', 'q90')])
     q = np.clip(q, 0, None) * lv[pred, None]
-    np.testing.assert_allclose(out[['q10', 'q50', 'q90']].to_numpy(), np.column_stack([q.min(1), q[:, 1], q.max(1)]), rtol=1e-6)
+    s = np.sort(q, axis=1)
+    np.testing.assert_allclose(out[['q10', 'q50', 'q90']].to_numpy(), np.column_stack(
+        [np.clip(q[:, 1] - (s[:, 1] - s[:, 0]), 0, None), q[:, 1], q[:, 1] + (s[:, 2] - s[:, 1])]), rtol=1e-6)
 
 
 def test_q50_not_sorted_into_interval(monkeypatch):
-    """Ngày lễ q50 (tweedie) hay thấp hơn q10, q10 có lúc trên q90: giữ q50 của tweedie, khoảng = min/max của 3 dự báo."""
+    """Ngày lễ q50 (tweedie) hay thấp hơn q10, q10 có lúc trên q90: giữ q50 của tweedie, khoảng dời theo q50."""
     class Stub:
         def __init__(self, v, n):
             self.v, self.n = v, n
@@ -60,12 +62,12 @@ def test_q50_not_sorted_into_interval(monkeypatch):
             return np.full(len(X), self.v)
         def feature_importance(self, kind):
             return np.zeros(self.n)
-    v = {0.5: 0.2, 0.1: 0.5, 0.9: 0.4}  # theo alpha: q50 < q90 < q10
+    v = {0.5: 0.3, 0.1: 0.5, 0.9: 0.4}  # theo alpha: q50 < q90 < q10; sắp xếp: 0,3 · 0,4 · 0,5
     monkeypatch.setattr(lgbm, '_fit', lambda X, y, w, objective, alpha, *a: Stub(v[alpha], X.shape[1]))
     _, df, st, _ = build(False)
     out = lgbm.forecast(df, st, CUT, FAST)
-    np.testing.assert_allclose(out.q10 / out.q50, 1)  # sắp xếp sẽ cho q50 = 0,4·level, q10 = 0,2·level
-    np.testing.assert_allclose(out.q90 / out.q50, 2.5)
+    np.testing.assert_allclose(out.q10 / out.q50, 0.2 / 0.3)  # q50 0,3, khoảng 0,3 ∓ 0,1 (sắp xếp: q50 0,4)
+    np.testing.assert_allclose(out.q90 / out.q50, 0.4 / 0.3)
 
 
 def test_design_min_h():

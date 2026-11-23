@@ -115,9 +115,12 @@ def forecast(df, static, cutoff, cfg, save_to=None):
             f'q{round(a * 100)}': _fit(Xt, yt, wt, 'quantile', a, c['params'], c['interval_rounds'], bar) for a in (0.1, 0.9)}
     q = np.column_stack([models[k].predict(X[pred]) for k in ('q10', 'q50', 'q90')])
     q = np.clip(q, 0, None) * lv[pred, None]
-    # q50 giữ của model tweedie, khoảng = min/max của 3 dự báo (như nf_models). Không sắp xếp: ngày lễ q50 hay thấp hơn
-    # q10 (36% điểm lễ backtest), sắp xếp đẩy q50 lên mức ngày thường (WAPE lễ validation 0,763 -> 0,893).
-    out = keys[pred].reset_index(drop=True).assign(q10=q.min(axis=1), q50=q[:, 1], q90=q.max(axis=1))
+    s = np.sort(q, axis=1)
+    # q50 giữ của tweedie: ngày lễ q50 hay thấp hơn q10 (36% điểm lễ backtest), lấy trung vị 3 dự báo đẩy q50 lên mức
+    # ngày thường (WAPE lễ validation 0,763 -> 0,893). Khoảng = khoảng cách q10/q90 tới trung vị sau sắp xếp, dời về q50
+    # (không chéo thì đúng bằng q10/q90 của model). Kẹp min/max thì phía dưới rộng 0, hệ số A5 thành inf.
+    out = keys[pred].reset_index(drop=True).assign(q10=np.clip(q[:, 1] - (s[:, 1] - s[:, 0]), 0, None), q50=q[:, 1],
+                                                    q90=q[:, 1] + (s[:, 2] - s[:, 1]))
     out.attrs['importance'] = pd.Series(models['q50'].feature_importance('gain'), index=X.columns)
     out.attrs['train_rows'] = int(train.sum())
     if save_to:
