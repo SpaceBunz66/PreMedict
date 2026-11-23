@@ -37,7 +37,7 @@ weather:
   end: '2026-07'            # tới hết horizon 30 ngày sau ngày cuối có dữ liệu (07/06/2026)
   clim_years: [2011, 2025]  # khí hậu nền (ERA5-Land monthly means)
   margin_deg: 0.3
-  radii_km: [5, 6, 7, 10, 12, 15]   # mặc định 6/12 + ablation {5,7} và {10,15}
+  radii_km: [6, 12]         # phải chứa facilities.radius_km; ablation R thêm {5,7} và {10,15} (chạy lại weather, không tải lại)
   parallel: 3               # số request CDS chạy song song
   thresholds: {cold: 15, severe_cold: 13, hot: 35, very_hot: 37, heavy_rain: 50}  # °C, mm
 
@@ -81,5 +81,4 @@ report:                     # A7: run trong runs/ dùng cho báo cáo tổng (l�
 
 fields:
   direct: [tong, luot_kham, ngoai_tru, noi_tru, cap_cuu]
-  derived: [bhyt, luot_vao, luot_ra, dung_tuyen, trai_tuyen]
   min_month_median: 30      # bỏ cặp CSYT × chỉ tiêu có median tháng < 30

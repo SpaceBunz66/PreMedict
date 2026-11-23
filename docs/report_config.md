@@ -55,7 +55,7 @@ Người dùng chạy trên laptop ngày 21/11/2026. Chỉ đổi các tham số
 - Step dừng thật (early stopping), theo gốc 15/01/25 · 30/09/25 · 30/11/25: s2000 800 · 2000 · 2000; s3000 800 · 2400 · 2000; s3000-h256 1000 · 2050 · 2350.
 - Ở gốc Tết 15/01/25, cả s1000, s2000 và s3000 đều dừng ở step 800 nên dự báo giống hệt nhau. Cửa sổ early stopping (16/12/2024 → 15/01/2025) không có Tết.
 - Chênh s2000/s3000 chỉ ở gốc 30/09 (0,229 so với 0,242): mức nhiễu train.
-- Chạy lại cùng cấu hình (`-211306`, `-231955`) cho dự báo giống từng byte: TiDE seed 0 tái lập được.
+- Chạy lại cùng cấu hình (run `-211306`, `-231955`) cho dự báo giống từng byte: TiDE seed 0 tái lập được. Hai run này đã xóa sau khi đối chiếu (23/11/2026).
 - Khoảng cách với LightGBM nằm ở Tết. Ngoài Tết ±21 ngày: tide 0,236–0,251, lgbm 0,242. Trong Tết ±21: tide 0,474, lgbm 0,304. Ngày lễ: 6,76 so với 0,89.
 - Cổng A4 (validation):
   - (a) WAPE ≤ lgbm: 0,299 > 0,2585, không đạt;
@@ -91,7 +91,7 @@ Run `20261122-084951_tide_a3-s2000-test`: cấu hình s2000, 5 gốc test, 3.200
   - train trên toàn bộ dữ liệu tới 07/06/2026: 2.826.526 mẫu, 363 giây;
   - dự báo 08/06 → 07/07/2026 cho 318 chuỗi (9.540 dòng `forecast.csv`, đủ q10/q50/q90);
   - khoảng tin cậy hiệu chỉnh A5 bằng `interval_factors_lgbm.csv` của run `20261119-114722_...` (fit trên 3 gốc validation). Độ rộng (q90 − q10) trung bình tăng từ 0,59 lên 0,67 lần q50.
-- q50 giống hệt bản train-final 20/11 (`20261120-114258`, làm trước A5): model không đổi, chỉ khoảng tin cậy khác. Bản 20/11 giữ lại để đối chiếu, không dùng.
+- q50 giống hệt bản train-final 20/11 (`20261120-114258`, làm trước A5): model không đổi, chỉ khoảng tin cậy khác. Bản 20/11 đã xóa sau khi đối chiếu (23/11/2026).
 - Nếu chốt bỏ ERA5 (bộ feature A1) thì phải train-final lại. Lệnh `train-final` hiện chưa có cờ `--drop`, và hệ số A5 cũng phải lấy từ run A1.
 
 ## 7. Dự báo xa cho demo (train-far, 23/11/2026)
