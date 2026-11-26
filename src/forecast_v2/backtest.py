@@ -15,7 +15,7 @@ import pandas as pd
 import yaml
 from tqdm import tqdm
 
-from forecast_v2 import clean, features, metrics
+from forecast_v2 import calendar_vn, clean, features, metrics
 from forecast_v2.calendar_vn import HOLIDAYS_CSV
 from forecast_v2.extract import ROOT
 
@@ -216,6 +216,73 @@ def far(snap, cfg, start=None):
                              'wape': round(b.wape['lgbm_far'], 4), 'wape_cung_ky_nam_truoc': round(b.wape['cung_ky_nam_truoc'], 4),
                              'bias': round(b.bias['lgbm_far'], 4), 'cover80': round(b.cover80['lgbm_far'], 4)}}
     save(out, manifest, cf)
+
+
+def evaluate(snap, cfg, artifact):
+    """Chấm forecast.csv của artifact bằng số thật trong snap; không train gì (dữ liệu sau train_until chỉ để đánh giá).
+
+    Điểm dùng được = mask của masked_panel (thiếu ngày làm việc, ramp-up, ngoại lai, tháng gãy ETL) trên snap, trừ thêm
+    ngày nạp dở toàn hệ thống: reporting_share < last_day_min_share, ngoài ngày nghỉ và Tết. Như features.fold, lịch sử
+    tới train_until (scale MASE, snaive7/mean4 để so) mask lại chỉ từ dữ liệu tới đó. Mọi model chấm trên cùng các điểm.
+    Ghi <artifact>/eval_<snapshot>.md và .parquet; trả về bảng metric như backtest.
+    """
+    man = json.loads((artifact / 'manifest.json').read_text(encoding='utf-8'))
+    cutoff, c, fields = pd.Timestamp(man['train_until']), cfg['clean'], cfg['fields']['direct']
+    fc = pd.read_csv(artifact / 'forecast.csv', dtype={'ma_tinh': str, 'csyt_id': str}, parse_dates=['ds'])
+    fc['unique_id'] = fc.csyt_id + '|' + fc.field
+    daily, _ = clean.merge_provinces(clean.load_raw(snap))
+    end = clean.last_data_day(daily, c['last_day_min_share'])
+    if end <= cutoff:
+        raise ValueError(f'{snap.name}: ngày cuối có dữ liệu {end:%d/%m/%Y} không sau train_until {cutoff:%d/%m/%Y}')
+    share = clean.reporting_share(daily)
+
+    def panel(until):
+        p = features.masked_panel(daily, fc.csyt_id.unique(), until, cfg)
+        partial = p.ds.map(share).lt(c['last_day_min_share']) & ~p.off & ~p.tet
+        long = pd.concat([pd.DataFrame({'unique_id': p.csyt_id + '|' + f, 'ds': p.ds, 'y': p[f],
+                                        'available_mask': (p[f'mask_{f}'] & ~partial).astype('float32')})
+                          for f in fields], ignore_index=True)
+        return long[long.unique_id.isin(fc.unique_id)], sorted(p.ds[partial].unique())
+
+    hist, _ = panel(cutoff)
+    fut, partial = panel(end)
+    fut = fut[(fut.ds > cutoff) & (fut.ds <= fc.ds.max())]
+    partial = [d for d in partial if fc.ds.min() <= d <= fc.ds.max()]
+    df = pd.concat([hist, fut], ignore_index=True).sort_values(['unique_id', 'ds'], ignore_index=True)
+
+    keys = fc[['unique_id', 'ds']].merge(df[df.ds > cutoff], on=['unique_id', 'ds'])  # điểm đã có số thật
+    preds = {man['model']: fc[['unique_id', 'ds', 'q10', 'q50', 'q90']],
+             **{n: model(n)(df, None, cutoff, cfg) for n in ('snaive7', 'mean4')}}
+    e = pd.concat([keys.merge(p, on=['unique_id', 'ds'], how='left').assign(model=n) for n, p in preds.items()],
+                  ignore_index=True)
+    cal = calendar_vn.features(pd.date_range(e.ds.min(), e.ds.max()))[['tet_offset', 'is_holiday']]
+    info = fc.drop_duplicates('unique_id').set_index('unique_id')[['ma_tinh', 'csyt_id', 'field']]
+    tuyen = pd.read_parquet(snap / 'facilities.parquet').drop_duplicates('ma_bv', keep='last').set_index('ma_bv').tuyen_bv
+    e = e.join(cal, on='ds').join(info, on='unique_id').assign(
+        set='eval', h=(e.ds - cutoff).dt.days, scale=e.unique_id.map(metrics.mase_scale(df, cutoff)))
+    e['tuyen'] = e.csyt_id.map(tuyen.astype('string').str.strip()).fillna('unknown').astype(str)
+    ok = (e.available_mask > 0) & e.groupby(['unique_id', 'ds']).q50.transform('count').eq(len(preds))
+    m = metrics.report(e[ok])
+
+    name = f'eval_{snap.name}'
+    e.to_parquet(artifact / f'{name}.parquet', index=False)
+    used = e[ok & (e.model == man['model'])]
+    md = [f'# Đánh giá {artifact.parent.name}/{artifact.name} bằng số thật của snapshot {snap.name}', '',
+          f'- Model {man["model"]}: train tới {cutoff:%d/%m/%Y} (snapshot {man["snapshot"]}), '
+          f'dự báo {fc.ds.min():%d/%m/%Y} → {fc.ds.max():%d/%m/%Y}; số thật tới {end:%d/%m/%Y}',
+          f'- Điểm chấm: {len(used):,}/{len(fc):,} điểm dự báo, {used.unique_id.nunique()}/{fc.unique_id.nunique()} chuỗi, '
+          f'{used.csyt_id.nunique()}/{fc.csyt_id.nunique()} CSYT. Bỏ: chưa có số {len(fc) - len(keys):,}; '
+          f'mask = 0 hoặc baseline không dự báo được {len(keys) - len(used):,}',
+          f'- Ngày nạp dở (bỏ cho mọi CSYT): {", ".join(f"{d:%d/%m/%Y}" for d in partial) or "không"}',
+          '- snaive7, mean4: tính từ số liệu của snapshot này tới ngày train cuối, để so', '']
+    for title, s in m.groupby(level='slice', sort=False):
+        md += [f'## {title}', '', '```', s.droplevel('slice').round(3).to_string(), '```', '']
+    md += ['## tỉnh', '', '```', metrics.score(e[ok], ['ma_tinh']).round(3).to_string(), '```', '']
+    (artifact / f'{name}.md').write_text('\n'.join(md), encoding='utf-8')
+    print('\n'.join(md[2:6]))
+    print(m.loc['tổng'].round(3).to_string())
+    print(f'Đã ghi {artifact / name}.md, .parquet')
+    return m
 
 
 def last_year(df, cutoff, keys):

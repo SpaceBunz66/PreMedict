@@ -5,6 +5,10 @@ Nguồn cho phần "Thiết lập thí nghiệm" của báo cáo (A7). Số li�
 ## 1. Dữ liệu
 
 - Snapshot 2026-11-18. Dữ liệu ngày từ 01/01/2021 tới **07/06/2026** (ETL trong DB dừng ở ngày này).
+  - Kiểm tra lại ngày 25/11/2026 (read-only): cả 35 partition (theo `ma_tinh`) của `hoc.dtm_hoc_kcb_theo_ngay` dừng trong khoảng 30/05–18/06/2026, sau đó chỉ còn dòng 0 đệm tới 31/12/2026. Từ lần DB khởi động 24/09/2026 tới nay có 0 lượt insert/update/delete vào các partition này, dù các bảng khác trong DB vẫn được ghi.
+  - Bảng nguồn `hoc.kcb_tong_hop` (`tong` của datamart = số hồ sơ theo ngày ra; tổng tháng 04–05/2026 khớp gần hết) cũng gần như dừng: sau 07/06/2026 chỉ có ~25 nghìn hồ sơ của 12 CSYT tỉnh 34 (01–19/07/2026) và vài hồ sơ lẻ. Trong tập model chỉ 20 CSYT có số liệu, và chỉ cho một ngày 08/06/2026 (chưa đủ ngày). Không có dữ liệu mới đủ để đánh giá.
+  - Quy ước: dữ liệu mới về sau (nếu có) chỉ dùng để đánh giá dự báo đã train tới 07/06/2026, không đưa vào train.
+- Định nghĩa target (hàm ETL `hoc.ins_datamart_kcb` trong DB): `time_id` = **ngày ra** (`ngay_ra`, YYYYMMDD) của hồ sơ trong `kcb_tong_hop`, đã bỏ trùng theo (`ma_cskcb`, `ma_lk`). `tong` = `luot_ra` = số hồ sơ ra trong ngày; `luot_kham`/`ngoai_tru`/`noi_tru` theo `ma_loai_kcb` (1 / 2,5,8 / 3,4,9); `cap_cuu` = `ma_doituong_kcb` '2'. Hàm tạo dòng 0 cho mọi CSYT × mọi ngày của khoảng được chạy, nên số 0 không có nghĩa là không có lượt khám.
 - Tập chặt: **131 CSYT, 318 chuỗi**. 5 chỉ tiêu dự báo trực tiếp: `tong`, `luot_kham`, `ngoai_tru`, `noi_tru`, `cap_cuu`.
 - Horizon 30 ngày. Bảng feature có 58 cột: lịch, lễ/Tết/âm lịch, 24 cột khí tượng quan trắc `w_*`, 3 cột khí hậu `clim_*`.
 
@@ -121,3 +125,55 @@ Người dùng cần dashboard dự báo từ hôm nay (23/11/2026). Query read-
   - model backtest học từ ít dữ liệu hơn bản cuối (gốc tới 21/12/2024), nên số đo có thể hơi bi quan;
   - q10/q90 chưa hiệu chỉnh, vì hệ số A5 chỉ fit cho h ≤ 30.
 - **Dashboard** (`dashboard/build_data.py`) mặc định đọc artifact `lgbm_far` mới nhất. Trên trang có dòng ghi chú và vạch "bỏ qua 168 ngày" nói rõ đây là dự báo xa.
+  - Chỉ tiêu suy ra (chỉ trên dashboard, không train): `bhyt`, `dung_tuyen`, `trai_tuyen` = dự báo `tong` (q10/q50/q90) × tỉ lệ field/`tong` trong 28 ngày có số liệu cuối của từng CSYT. Backtest tỉ lệ (gốc 08/06/2025, chấm 24/11 → 23/12/2025, 131 CSYT, giả định `tong` đúng): WAPE do tỉ lệ `bhyt` 0, `dung_tuyen` 0,071, `trai_tuyen` 1,087. Trái tuyến từng CSYT kém tin cậy vì chỉ 16–30 CSYT có ghi và bật/tắt thất thường; cộng toàn bộ thì tỉ lệ trái tuyến/BHYT ổn định ở 0,023–0,048 mỗi tháng từ 10/2024. Bản 20261123-110548: 30 ngày q50 `tong` 186.183, `dung_tuyen` 156.935, `trai_tuyen` 4.768.
+  - Tai nạn thương tích (`tn_*`) chưa dự báo: chỉ chiếm 1,6% `tong`, 11% số ngày có ca.
+
+## 8. DB production (kiểm tra 25/11/2026)
+
+Đồng nghiệp đưa cấu hình DB của bản deploy k8s (`hoc-ai:1.4.5`): DB prod (nay là `.env`, bản sao `.env.prod`), khác DB devtest (`.env.devtest`, trước đây là `.env`) dùng cho snapshot `2026-11-18`. Kiểm tra read-only bằng `scripts/check_db.py --env .env.prod` (so theo tháng với snapshot).
+
+- **DB production đang cập nhật:** ngày thường khoảng 2.700 CSYT có số, cuối tuần khoảng 350–400. Ngày đủ cuối cùng là 23/11/2026; 24/11 mới có 185 CSYT (trễ khoảng 2 ngày). DB cũ dừng ở 18/06/2026.
+- **Trùng với snapshot tới 06/2024:** `tong` theo tháng lệch dưới 0,03%; DB production có thêm 5–80 CSYT, toàn CSYT số liệu rất nhỏ.
+- **Từ 07/2024 DB production đầy đủ hơn nhiều:** `tong` cao hơn 13–31% (10/2024 → 12/2025) và 40–67% (01 → 05/2026), thêm 470–820 CSYT mỗi tháng. Nghĩa là snapshot dùng để train thiếu một phần đáng kể dữ liệu.
+- **Danh mục:** `dm_coso_kcb` 15.306 CSYT (snapshot 13.923); `config_tinh_dtm_kcb` 24 tỉnh (snapshot 1).
+- **Lỗi nhỏ:** 25 dòng `tong` > 0 ở ngày tương lai (26–30/11/2026), có thể là hẹn khám hoặc nhập sai ngày; không có `csyt_id` NULL, không có giá trị âm. Có vài dòng lẻ từ 2018–2020.
+- **Riêng 131 CSYT tập chặt** (so theo CSYT, 06/2025 → 07/06/2026): 120 CSYT khớp snapshot (tỉ lệ `tong` prod/snapshot trung vị 1,000, 116/120 lệch ≤ 5%). 11 CSYT Cà Mau (96004, 96011, 96014, 96019, 96025, 96034, 96066, 96067, 96145, 96146, 96155) không có số trong prod từ 06/2025 tới 09/2026, có lại từ 10/2026; chiếm khoảng 30% `tong` của tập chặt.
+- **Độ đầy đủ tới nay:** 329 CSYT có số ≥ 95% ngày T2–T6 trong 24/09 → 23/11/2026; trong tập chặt chỉ 11. Từ 01/07/2026 phần lớn CSYT tập chặt của 66, 79, 80, 96 không còn số trong prod; 01, 12, 22, 24, 40, 42, 46 vẫn đều.
+
+## 9. Đánh giá ngoài mẫu train-final bằng số thật từ DB production (25/11/2026)
+
+Chỉ đánh giá, không train (quy ước mục 1). Dự báo `artifacts/lgbm/20261123-165545/forecast.csv` (dữ liệu tới 07/06/2026, dự báo 08/06 → 07/07/2026) so với số thật đọc từ `.env.prod`. Script tạm, chưa đưa vào `src/`.
+
+- **Tập chấm:** 60/131 CSYT có số ≥ 95% ngày T2–T6 trong 08/06 → 07/07 (01: 18, 40: 15, 46: 10, 42: 6, 12: 6, 24: 3, 22: 1, 79: 1), 148 chuỗi, 4.440 điểm. Ngày không có dòng tính là 0 (cuối tuần/đóng cửa). Không có ngày lễ trong khoảng này.
+- **Ngày nạp dở 30/06/2026:** chỉ 27/120 CSYT có số; tổng `tong` của 60 CSYT là 730 so với q50 3.479. Bỏ ngày này khi chấm.
+
+| (bỏ 30/06) | lgbm | snaive7 |
+|---|---|---|
+| **WAPE** | **0,259** | 0,287 |
+| WAPE h 15–30 | 0,325 | 0,343 |
+| bias | −0,042 | |
+| cover80 (đã hiệu chỉnh A5) | 0,825 | |
+
+- Giữ 30/06: lgbm 0,290, snaive7 0,325, cover80 0,805. Theo chỉ tiêu (giữ 30/06): `tong` 0,272, `luot_kham` 0,295, `noi_tru` 0,293, `cap_cuu` 0,354, `ngoai_tru` 0,692.
+- Khớp với test (mục 6: WAPE 0,256, cover80 0,82). Hạn chế: một gốc, chỉ 60 CSYT ở 7 tỉnh phía Bắc/Trung, không có ngày lễ.
+
+## 10. Snapshot DB production 2026-11-25
+
+- `extract` từ `.env` (DB prod) ngày 25/11/2026, ~20 phút. Dữ liệu ngày 2018 → 2027 (dòng 0 đệm tới hết 2027); CSYT có số: 2018–2020 chỉ vài CSYT, 2021 ~180, 2023 ~680, 2025 ~4.000, 2026 ~4.200. 15.306 CSYT trong `dm_coso_kcb`.
+- Ngày cuối đủ số: **23/11/2026**. 24/11 chỉ 202 CSYT báo cáo (7% mức thường, trễ ETL ~2 ngày); 25/11 (ngày extract) 1.840 CSYT nhưng tổng `tong` 14 nghìn (~18% một ngày thường); 26–30/11 vài chục dòng ngày ra sai.
+- `clean.load_raw` bỏ mọi ngày từ ngày extract (tên snapshot) trở đi, nên `last_data_day` = 23/11. Snapshot cũ 2026-11-18 không đổi (07/06/2026).
+- Dữ liệu trước 01/01/2021 bị bỏ trong `load_raw`: chỉ 10 CSYT tỉnh 40 với 285 lượt rải rác 2018–2020; lịch nghỉ `calendar/` bắt đầu từ 2021 (snapshot cũ cũng bắt đầu 01/01/2021).
+- `quality` với ngưỡng gốc (cửa sổ 365 ngày tới 23/11/2026): **tập chặt 26 CSYT, tập nới 38** (snapshot cũ: 131/204). Chỉ 4/131 CSYT của tập chặt cũ còn đạt; phần lớn rơi ở coverage (median 0,85) và gap (median 20 ngày làm việc), kèm collapse.
+- Nguyên nhân là các lỗ nạp dữ liệu theo tỉnh trong DB prod, không phải CSYT ngừng hoạt động (số CSYT báo cáo trung bình theo ngày làm việc):
+  - 01–29/07/2026: tỉnh 66, 79, 86, 96, 75, 80 gần như im lặng (66: 287 → 25, 79: 221 → 11), 44 còn ~60%; các tỉnh khác bình thường.
+  - 28/09–19/10/2026: gần như toàn hệ thống (2.898 → 684 CSYT/ngày), chỉ 24, 33 bình thường.
+  - Ngày cuối/đầu tháng nạp dở: 31/12/2025–02/01/2026, 27–30/01/2026, 31/03/2026.
+  - Tỉnh 51 dừng hẳn từ 24/09/2026; 11 CSYT Cà Mau không có số 06/2025–09/2026 (đã biết từ mục 9).
+- **Xử lý (user chọn 25/11/2026): đánh dấu lỗ nạp theo tỉnh** (`clean.etl_holes`). Ngày làm việc mà số CSYT báo cáo của tỉnh < 50% max cùng thứ của 8 tuần trước (max thay median để lỗ ~4 tuần không tự kéo tham chiếu xuống) là lỗ; T7/CN là lỗ khi T6 trước và T2 sau đều lỗ (số đếm cuối tuần nhiễu); ngày nghỉ và cửa sổ Tết không tính. Ngày lỗ: mask khi train (mọi CSYT trong tỉnh, kể cả CSYT có số), bỏ khỏi coverage/gap; tổng tháng/năm = trung bình ngày ngoài lỗ × số ngày, bỏ tháng lỗ quá nửa. Ngưỡng `quality` giữ nguyên.
+  - Số ngày làm việc bị lỗ trong cửa sổ: 66/75/79/86: 43–44, 80: 71, 19: 81, 04: 53, 12: 44, 44: 43, 25: 43, 01/40/46: 24, 33: 4, 24: 7.
+  - Trong lỗ dài (07/2026, 10/2026) số CSYT giảm 70–90% nhưng tổng lượt gần như không giảm (tỉnh 25: 12 nghìn so với 15 nghìn/ngày): bệnh viện vẫn nạp, thiếu chủ yếu là CSYT nhỏ. Ngày nạp dở cuối tháng (vd. 30/06) thì cả CSYT có số cũng thiếu (mục 9), nên mask cả tỉnh cho chắc.
+  - Lỗ dài hơn 8 tuần thành "mức mới" và không còn bị đánh dấu (tỉnh 25 01–04/2026, 80 01–07/2026: số CSYT còn ~1/4 và ~1/2).
+- **Kết quả: tập chặt 336 CSYT, tập nới 345** (tuyến 2: 20, 3: 78, 4: 236). So với tập chặt cũ 131: giữ 79, bỏ 52 (23 CSYT Cà Mau 96 không có số, 10 dừng hoạt động, còn lại level shift/ngoại lai/gap), thêm 257 (177 tuyến 4, median `tong` ~440 lượt/tháng; 200 CSYT đã có trong report cũ nhưng trượt coverage ở cửa sổ 06/2025–06/2026).
+- `facilities`: 345 CSYT (336 tập chặt); bán kính khí tượng 6 km: 325, 12 km: 20; hạng 4: 230, 3: 68, CH: 22, 2: 12, 1: 3, unknown: 10.
+- `weather` (chuẩn bị): mọi ô lưới ERA5-Land của 345 CSYT (bán kính 6 và 12 km) nằm trong khung đã tải `data/weather/22.8_103_8.3_109.7`, nên `weather` dùng lại khung này (`existing_area`) và chỉ tải thêm 08–11/2026 (`weather.end` = 2026-11; tháng hiện tại xin tới hôm nay − 6 ngày, file tải trước cuối tháng + 10 ngày sẽ được tải lại).
+- `weather` (25/11/2026): dùng lại khung [22,8; 103,0; 8,3; 109,7], chỉ tải 4 file 08–11/2026 (~20 phút, CDS có lỗi mạng nhưng tự thử lại). `weather_daily`: 345 CSYT × 2 bán kính, 02/12/2020 → **19/11/2026** (ngày 20–23/11 chưa có quan trắc), thiếu `t_mean` 0,29% = chỉ CSYT 45105 (BV Mắt Quảng Trị, thuộc tập chặt; tọa độ trong DB rơi vào ô biển gần đảo Cồn Cỏ, như snapshot cũ). `features` sẽ bỏ CSYT này nên tập train còn 335 CSYT chặt. Mưa khí hậu/quan trắc 0,93. Trùng khớp hoàn toàn với `weather_daily` cũ trên phần chung (488.048 dòng, lệch < 1e-13).

@@ -122,6 +122,15 @@ def raw_dir(a):
     return WEATHER_DIR / '_'.join(f'{v:g}' for v in a)  # khung khác thì thư mục khác: không dùng nhầm file cũ
 
 
+def existing_area(cells):
+    """Khung đã tải trong data/weather/ chứa mọi tâm ô cần dùng (None nếu không có): tập CSYT đổi mà vẫn nằm trong khung
+    cũ thì chỉ tải thêm tháng thiếu, không tải lại cả lịch sử cho khung mới."""
+    for d in sorted(WEATHER_DIR.glob('*_*_*_*')):
+        n, w, s, e = (float(v) for v in d.name.split('_'))
+        if cells.lat.between(s, n).all() and cells.lon.between(w, e).all():
+            return [n, w, s, e]
+
+
 def _retrieve(dataset, request, target):
     """Tải vào thư mục tạm rồi mới đổi tên, nên file .nc đã có luôn là file tải xong. Gói zip (nhiều file nc) thì gộp."""
     import cdsapi  # chỉ cần khi tải
@@ -146,16 +155,23 @@ def download(a, c):
     d = raw_dir(a)
     d.mkdir(parents=True, exist_ok=True)
     common = {'variable': ERA_VARS, 'area': a, 'data_format': 'netcdf', 'download_format': 'unarchived'}
-    jobs = {}
+    jobs, ready = {}, {}
+    # ERA5-Land trễ ~5 ngày: tháng hiện tại chỉ xin tới hôm nay - 6 ngày; file tải trước cuối tháng + 10 ngày là tháng
+    # chưa trọn, chạy lại sẽ tải lại.
+    available = pd.Timestamp.today().normalize() - pd.Timedelta(days=6)
     for m in pd.period_range(c['start'], c['end'], freq='M'):
+        last = min(m.days_in_month, (available - m.start_time).days + 1)
+        if last < 1:
+            raise ValueError(f'weather.end = {c["end"]}: tháng {m} chưa có số liệu ERA5-Land')
         jobs[d / f'hourly_{m}.nc'] = ('reanalysis-era5-land', common | {
-            'year': str(m.year), 'month': f'{m.month:02d}', 'day': [f'{x:02d}' for x in range(1, m.days_in_month + 1)],
+            'year': str(m.year), 'month': f'{m.month:02d}', 'day': [f'{x:02d}' for x in range(1, last + 1)],
             'time': [f'{h:02d}:00' for h in range(24)]})
+        ready[d / f'hourly_{m}.nc'] = (m.end_time + pd.Timedelta(days=10)).timestamp()
     y0, y1 = c['clim_years']
     jobs[d / f'monthly_{y0}-{y1}.nc'] = ('reanalysis-era5-land-monthly-means', common | {
         'product_type': ['monthly_averaged_reanalysis'], 'year': [str(y) for y in range(y0, y1 + 1)],
         'month': [f'{x:02d}' for x in range(1, 13)], 'time': ['00:00']})
-    jobs = {t: j for t, j in jobs.items() if not t.exists()}
+    jobs = {t: j for t, j in jobs.items() if not t.exists() or t.stat().st_mtime < ready.get(t, 0)}
     print(f'Khung {a}: cần tải {len(jobs)} file vào {d}', flush=True)
     failed = []
     with ThreadPoolExecutor(c['parallel']) as ex:
@@ -238,10 +254,9 @@ def derived(w, th):
 def run(snap, cfg):
     c = cfg['weather']
     fac = pd.read_parquet(snap / 'facilities_static.parquet')
-    a = area(fac, c['margin_deg'])
-    d = download(a, c)
     weights = cell_weights(fac, c['radii_km'])
     cells = weights[['lat', 'lon']].drop_duplicates().reset_index(drop=True)
+    d = download(existing_area(cells) or area(fac, c['margin_deg']), c)
     obs = observed(d, pd.period_range(c['start'], c['end'], freq='M'), weights, cells)
     clim = climatology(d / f'monthly_{c["clim_years"][0]}-{c["clim_years"][1]}.nc', weights, cells)
     ratio = clim.clim_rain_mm.mean() / obs.rain_mm.mean()

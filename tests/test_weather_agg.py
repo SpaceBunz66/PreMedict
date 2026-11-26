@@ -65,3 +65,11 @@ def test_by_radius_drops_sea_cells():
     weights = pd.DataFrame({'csyt_id': 'a', 'radius_km': 6, 'lat': [21.0, 21.1], 'lon': [105.8, 105.8], 'weight': [0.3, 0.7]})
     out = weather.by_radius(cell_daily, cells, weights)
     assert out[('a', 6)].tolist() == pytest.approx([20.0, 22.0])
+
+
+def test_existing_area_reuses_box_containing_all_cells(tmp_path, monkeypatch):
+    monkeypatch.setattr(weather, 'WEATHER_DIR', tmp_path)
+    (tmp_path / '22.8_103_8.3_109.7').mkdir()
+    inside = pd.DataFrame({'lat': [8.3, 22.8], 'lon': [103.0, 109.7]})  # tâm ô đúng trên biên vẫn có trong file
+    assert weather.existing_area(inside) == [22.8, 103.0, 8.3, 109.7]
+    assert weather.existing_area(inside.assign(lat=[8.3, 22.9])) is None

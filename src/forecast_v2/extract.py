@@ -30,6 +30,15 @@ def load_env(path=ROOT / '.env'):
                 os.environ.setdefault(key.strip(), value.strip())
 
 
+def use_env(name):
+    """Dùng DB trong file name (trong forecast_v2/, vd. .env.prod) thay cho .env: bỏ biến DB đang có vì load_env chỉ setdefault."""
+    if not (ROOT / name).exists():
+        raise FileNotFoundError(f'Không có {ROOT / name}')
+    for v in DB_VARS:
+        os.environ.pop(v, None)
+    load_env(ROOT / name)
+
+
 def connect(timeout_ms=900_000):
     """Mở kết nối nằm trong một giao dịch READ ONLY (plan §0); dừng nếu server không xác nhận read-only.
 
@@ -67,7 +76,8 @@ def run(snapshot=None):
     sums = ', '.join(f'COALESCE(SUM({f}), 0) AS {f}' for f in PREDICT_FIELDS)
     # Cột nguồn kiểu numeric: float32 giữ chính xác số đếm tới 16 triệu và không làm tròn ngầm số lẻ.
     dtypes = {'ma_tinh': str, 'csyt_id': str, 'time_id': 'int32'} | {f: 'float32' for f in PREDICT_FIELDS}
-    with closing(connect()) as conn, conn.cursor() as cur:
+    # DB prod: GROUP BY một năm mất ~5 phút (2023), năm 2025 lớn gấp ~6 lần nên 15 phút mặc định không đủ.
+    with closing(connect(timeout_ms=3_600_000)) as conn, conn.cursor() as cur:
         cur.execute('SELECT min(time_id), max(time_id) FROM hoc.dtm_hoc_kcb_theo_ngay WHERE csyt_id IS NOT NULL')
         first, last = (int(v) for v in cur.fetchone())
         for year in range(first // 10000, last // 10000 + 1):

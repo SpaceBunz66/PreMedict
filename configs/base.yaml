@@ -1,6 +1,6 @@
 # Ngưỡng theo plan §P1. Sửa ở đây rồi chạy lại: python -m forecast_v2.cli quality
 clean:
-  last_day_min_share: 0.5   # ngày cuối có dữ liệu: số CSYT báo cáo >= 50% mức thường của cùng thứ
+  last_day_min_share: 0.5   # ngày cuối có dữ liệu và lỗ nạp theo tỉnh (etl_holes): số CSYT báo cáo >= 50% mức thường
   open_weekday_share: 0.5   # CSYT "thường mở" vào một thứ nếu >= 50% ngày thứ đó có tong > 0
   rampup_days: 28           # mask các ngày đầu CSYT lên hệ thống
   tet_window: [-7, 10]      # ngày quanh mùng 1 Tết: không tính là ngày làm việc, không xét ngoại lai
@@ -34,7 +34,7 @@ facilities:
 
 weather:
   start: '2020-12'          # đủ 28 ngày trước 01/2021 cho tổng mưa 28 ngày
-  end: '2026-07'            # tới hết horizon 30 ngày sau ngày cuối có dữ liệu (07/06/2026)
+  end: '2026-11'            # tháng của ngày cuối có dữ liệu (23/11/2026, snapshot prod); tháng hiện tại chỉ tải tới hôm nay - 6 ngày
   clim_years: [2011, 2025]  # khí hậu nền (ERA5-Land monthly means)
   margin_deg: 0.3
   radii_km: [6, 12]         # phải chứa facilities.radius_km; ablation R thêm {5,7} và {10,15} (chạy lại weather, không tải lại)

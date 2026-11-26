@@ -23,7 +23,7 @@ def inputs(perturb):
     y[DAYS == SPIKE] *= 4
     if perturb:
         y[DAYS > CUT] *= 4
-    daily = pd.concat([pd.DataFrame({'csyt_id': c, 'ds': DAYS, **{f: y for f in CFG['fields']['direct']}})
+    daily = pd.concat([pd.DataFrame({'csyt_id': c, 'ma_tinh': '24', 'ds': DAYS, **{f: y for f in CFG['fields']['direct']}})
                        for c in IDS], ignore_index=True)
     report = pd.DataFrame({f'use_{f}': f in ('tong', 'luot_kham') for f in CFG['fields']['direct']}, index=IDS)
     static = pd.DataFrame({'ma_tinh': '24', 'latitude': 21.0, 'longitude': 106.0, 'tuyen': '3', 'hang': '3',

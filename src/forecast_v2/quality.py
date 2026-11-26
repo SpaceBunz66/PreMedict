@@ -16,15 +16,18 @@ def metrics(panel, last_day, fields, q):
     w['month'] = w.ds.dt.to_period('M')
     n_days = w.groupby('month').ds.nunique()
     w['full'] = w.month.isin(n_days.index[n_days.to_numpy() == n_days.index.days_in_month])  # tháng trọn trong cửa sổ
-    wk = w[(w.ds.dt.dayofweek < 5) & ~w.off & ~w.tet]  # ngày làm việc, bỏ cửa sổ Tết
+    wk = w[(w.ds.dt.dayofweek < 5) & ~w.off & ~w.tet & ~w.hole]  # ngày làm việc, bỏ cửa sổ Tết và lỗ nạp theo tỉnh
     zero = wk.tong == 0
     m['workday_coverage'] = 1 - zero.groupby(wk.csyt_id).mean()
     run = (~zero).groupby(wk.csyt_id).cumsum()  # các ngày 0 liên tiếp có cùng run
     m['max_workday_gap'] = zero.groupby([wk.csyt_id, run]).sum().groupby(level=0).max()
 
-    monthly = w[w.full].groupby(['csyt_id', 'month'])[fields].sum()
+    # Lỗ nạp theo tỉnh: tổng tháng/năm = trung bình ngày ngoài lỗ × số ngày; bỏ tháng có lỗ quá nửa số ngày.
+    g = w[w.full & ~w.hole].groupby(['csyt_id', 'month'])
+    dim = g.size().index.get_level_values('month').days_in_month.to_numpy()
+    monthly = g[fields].mean().mul(dim, axis=0)[g.size().to_numpy() * 2 >= dim]
     m = m.join(monthly.groupby(level=0).median().add_prefix('month_median_'))
-    m['year_total'] = w.groupby('csyt_id').tong.sum()
+    m['year_total'] = w[~w.hole].groupby('csyt_id').tong.mean() * w.groupby('csyt_id').size()
     t = monthly.tong[~monthly.index.get_level_values('month').isin(w.month[w.tet].unique())]  # bỏ tháng Tết
     m['min_month_ratio'] = (t / m.month_median_tong.reindex(t.index.get_level_values(0)).to_numpy()).groupby(level=0).min()
     m['outlier_ratio'] = w.groupby('csyt_id').outlier.sum() / w.groupby('csyt_id').ok.sum()
@@ -96,7 +99,7 @@ def evaluate(raw, facilities, cfg):
     c, q, fields = cfg['clean'], cfg['quality'], cfg['fields']
     daily, province = clean.merge_provinces(raw)
     last_day = clean.last_data_day(daily, c['last_day_min_share'])
-    panel = clean.build_panel(daily, last_day, c)
+    panel = clean.build_panel(daily, last_day, c, clean.etl_holes(daily, c['last_day_min_share']))
     panel['outlier'] = clean.outliers(panel, 'tong', c['outlier_z'])
 
     m = metrics(panel, last_day, fields['direct'], q)
@@ -112,9 +115,11 @@ def evaluate(raw, facilities, cfg):
     return m, last_day, panel
 
 
-def audit(snap, raw, last_day, report, breaks, cfg):
+def audit(snap, raw, last_day, report, breaks, panel, cfg):
     """audit.md: các con số khảo sát (plan §1) và funnel chọn tập train, để kiểm tra lại mỗi lần refresh dữ liệu."""
     q, direct = cfg['quality'], cfg['fields']['direct']
+    h = panel[panel.hole & (panel.ds > last_day - pd.Timedelta(days=q['window_days'])) & (panel.ds.dt.dayofweek < 5)]
+    h = h.ds.groupby(h.csyt_id.map(report.ma_tinh)).nunique()  # số ngày làm việc bị lỗ theo tỉnh
     active = raw[raw.tong > 0]
     pairs = raw.groupby(['ma_tinh', 'csyt_id']).tong.sum()
     after = raw[raw.ds > last_day]
@@ -136,6 +141,8 @@ def audit(snap, raw, last_day, report, breaks, cfg):
         '- Tháng gãy ETL (tỉ lệ so với tong): '
         + ('; '.join(f'{f}: {", ".join(str(p) for p in breaks.index[breaks[f]])}' for f in breaks if breaks[f].any())
            or 'không có'),
+        f'- Lỗ nạp theo tỉnh, số ngày làm việc trong cửa sổ {q["window_days"]} ngày (bỏ khỏi coverage/gap/tổng tháng, '
+        'mask khi train): ' + (', '.join(f'{t}: {n}' for t, n in h.items()) or 'không có'),
         '', f'## Tập train (plan §P1), cửa sổ {q["window_days"]} ngày tới {last_day:%d/%m/%Y}', '',
         '| Tiêu chí | Còn lại (cộng dồn) | Không đạt tiêu chí này |', '|---|---:|---:|',
         f'| (CSYT có dữ liệu) | {len(report):,} | |',
@@ -165,6 +172,6 @@ def run(snap, cfg):
     report, last_day, panel = evaluate(raw, pd.read_parquet(snap / 'facilities.parquet'), cfg)
     breaks = clean.etl_breaks(panel, clean.FIELDS[1:], cfg['clean']['etl_break_drop'])
     report.to_parquet(snap / 'quality_report.parquet')
-    (snap / 'audit.md').write_text(audit(snap, raw, last_day, report, breaks, cfg), encoding='utf-8')
+    (snap / 'audit.md').write_text(audit(snap, raw, last_day, report, breaks, panel, cfg), encoding='utf-8')
     print(f'Ngày cuối có dữ liệu {last_day:%d/%m/%Y}; tập chặt {report.pass_strict.sum()} CSYT, '
           f'tập nới {report.pass_relaxed.sum()} CSYT. Đã ghi {snap / "audit.md"}')

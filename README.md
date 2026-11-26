@@ -12,7 +12,7 @@ Dự báo lượt khám 30 ngày cho CSYT. Đọc DB chỉ đọc, làm sạch, 
 | `dashboard/` | demo: `build_data.py` → `data.js`, mở `index.html` |
 | `data/`, `runs/`, `artifacts/` | snapshot dữ liệu, kết quả backtest, model đã train. Chỉ ở local, không commit |
 
-Cài đặt: `.venv-ml` theo `requirements-ml.txt`, rồi `pip install -e .`. Kết nối DB lấy từ `.env`, tải ERA5 dùng `.cdsapirc`.
+Cài đặt: `.venv-ml` theo `requirements-ml.txt`, rồi `pip install -e .`. Kết nối DB lấy từ `.env` (DB production; `extract --env <file>` để đọc DB khác, vd. `.env.devtest`), tải ERA5 dùng `.cdsapirc`.
 
 ```
 python -m forecast_v2.cli extract | quality | facilities | weather | features   # dựng snapshot trong data/
@@ -21,6 +21,7 @@ python -m forecast_v2.cli calibrate --models lgbm                               
 python -m forecast_v2.cli train-final --models lgbm                             # -> artifacts/lgbm/<giờ>/
 python -m forecast_v2.cli train-far                                             # dự báo từ hôm nay -> artifacts/lgbm_far/<giờ>/
 python -m forecast_v2.cli report                                                # -> runs/<giờ>_report/report.md
+python -m forecast_v2.cli evaluate --artifact artifacts/lgbm/<giờ>              # chấm bằng số thật snapshot mới -> eval_<snapshot>.md
 python dashboard/build_data.py                                                  # demo, đọc artifacts/lgbm_far mới nhất
 ```
 

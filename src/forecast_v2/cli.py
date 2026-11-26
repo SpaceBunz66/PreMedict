@@ -1,11 +1,15 @@
 """python -m forecast_v2.cli extract | quality | facilities | weather | features [--snapshot YYYY-MM-DD] [--config configs/base.yaml]
+       python -m forecast_v2.cli extract --env .env.devtest --snapshot devtest-2026-11-25   # DB khác .env (prod); tên
+                                                         # không dạng YYYY-MM-DD nên các lệnh khác không tự chọn
        python -m forecast_v2.cli backtest --models snaive7,mean4 [--smoke] [--drop weather,clim]  # --drop: ablation lgbm
        python -m forecast_v2.cli backtest --models tide --set models.tide.max_steps=3000 --set backtest.test=[] --tag a3
        python -m forecast_v2.cli train-final --models lgbm
        python -m forecast_v2.cli train-far [--start YYYY-MM-DD]   # dự báo xa khi dữ liệu dừng trước start (mặc định hôm nay)
        python -m forecast_v2.cli tune [--trials 10] [--smoke]   # chạy lại = chạy tiếp study
        python -m forecast_v2.cli calibrate --models lgbm,tide   # A5: hệ số khoảng tin cậy từ run backtest mới nhất
-       python -m forecast_v2.cli report                         # A7: báo cáo tổng từ các run trong base.yaml (report)"""
+       python -m forecast_v2.cli report                         # A7: báo cáo tổng từ các run trong base.yaml (report)
+       python -m forecast_v2.cli evaluate --artifact artifacts/lgbm/20261123-165545 [--snapshot YYYY-MM-DD]
+                                                                # chấm dự báo của artifact bằng số thật của snapshot"""
 import argparse
 import sys
 
@@ -20,7 +24,7 @@ def main():
         stream.reconfigure(encoding='utf-8')  # stderr: thanh tiến độ tqdm
     p = argparse.ArgumentParser(prog='forecast_v2')
     p.add_argument('command', choices=['extract', 'quality', 'facilities', 'weather', 'features', 'backtest',
-                                        'train-final', 'train-far', 'tune', 'calibrate', 'report'])
+                                        'train-final', 'train-far', 'tune', 'calibrate', 'report', 'evaluate'])
     p.add_argument('--snapshot', help='thư mục con của data/; mặc định: hôm nay (extract), mới nhất (quality)')
     p.add_argument('--config', default=ROOT / 'configs' / 'base.yaml')
     p.add_argument('--models', default='snaive7,mean4', help='backtest: tên model, cách nhau bởi dấu phẩy')
@@ -32,10 +36,18 @@ def main():
     p.add_argument('--tag', default='', help='backtest: hậu tố tên run; run có tag không bị calibrate/train-final chọn')
     p.add_argument('--trials', type=int, default=10, help='tune: số trial chạy thêm; 0 = chỉ in bảng hội tụ')
     p.add_argument('--start', help='train-far: ngày đầu tiên cần dự báo (YYYY-MM-DD), mặc định hôm nay')
+    p.add_argument('--env', help='extract: file cấu hình DB trong forecast_v2/ (vd. .env.prod), mặc định .env')
+    p.add_argument('--artifact', help='evaluate: thư mục artifact có forecast.csv, manifest.json (vd. artifacts/lgbm/<run>)')
     args = p.parse_args()
+    if args.env and args.command != 'extract':
+        p.error('--env chỉ dùng cho extract')
+    if (args.command == 'evaluate') != bool(args.artifact):
+        p.error('evaluate cần --artifact; --artifact chỉ dùng cho evaluate')
     if args.set and (args.command != 'backtest' or not args.tag):  # lệnh khác ghi đè file snapshot dùng chung
         p.error('--set chỉ dùng cho backtest, kèm --tag (run thử không bị calibrate/train-final chọn)')
     if args.command == 'extract':
+        if args.env:
+            extract.use_env(args.env)
         extract.run(args.snapshot)
         return
     if args.command == 'calibrate':
@@ -67,6 +79,9 @@ def main():
     if args.command == 'tune':
         from forecast_v2 import tune  # optuna + lightgbm: chỉ import khi cần
         tune.run(snap, cfg, args.trials, args.smoke)
+        return
+    if args.command == 'evaluate':
+        backtest.evaluate(snap, cfg, ROOT / args.artifact)
         return
     if args.command == 'report':
         from forecast_v2 import report  # matplotlib + lightgbm: chỉ import khi cần

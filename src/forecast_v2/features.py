@@ -19,13 +19,14 @@ NOT_OBS = ['ds', 'csyt_id', 'radius_km', 'doy', *CLIM]  # cột của weather_da
 
 def masked_panel(daily, ids, end, cfg):
     """Panel (csyt_id, ds) của các CSYT ids, từ ngày hoạt động đầu tiên tới end, kèm y các chỉ tiêu và mask_<chỉ tiêu>
-    (plan §P1 "Làm sạch": thiếu ngày làm việc, ramp-up, ngoại lai, tháng gãy ETL). Chỉ dùng dữ liệu tới end.
-    daily phải gồm mọi CSYT: tháng gãy ETL xét trên toàn hệ thống.
+    (plan §P1 "Làm sạch": thiếu ngày làm việc, lỗ nạp theo tỉnh, ramp-up, ngoại lai, tháng gãy ETL). Chỉ dùng dữ liệu
+    tới end. daily phải gồm mọi CSYT (merge_provinces): tháng gãy ETL và lỗ nạp theo tỉnh xét trên mọi CSYT.
     """
     c, fields = cfg['clean'], cfg['fields']['direct']
     daily = daily[daily.ds <= end]
     breaks = clean.etl_breaks(daily, [f for f in fields if f != 'tong'], c['etl_break_drop'])
-    p = clean.build_panel(daily.loc[daily.csyt_id.isin(ids), ['csyt_id', 'ds', *fields]], end, c)
+    holes = clean.etl_holes(daily, c['last_day_min_share'])
+    p = clean.build_panel(daily.loc[daily.csyt_id.isin(ids), ['csyt_id', 'ds', *fields]], end, c, holes)
     month = p.ds.dt.to_period('M')
     for f in fields:
         bad = clean.outliers(p, f, c['outlier_z'])

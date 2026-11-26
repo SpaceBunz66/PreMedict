@@ -6,7 +6,8 @@ dashboard/data.js
 
 # Môi trường và bí mật
 .venv*/
-.env
+.env*
+!.env.example
 .cdsapirc
 
 # Python
