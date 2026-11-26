@@ -54,10 +54,13 @@ models:
   lgbm:                     # plan §P6; tham số tune ở P8 trên các gốc validation
     origin_step: 2          # gốc train cách nhau 2 ngày (7 lẻ nên tự xoay vòng các thứ)
     objective: tweedie      # tweedie | quantile (0,5): chọn trên validation
-    rounds: 600
+    # rounds + params: Optuna trial 18 trên snapshot 2026-11-25 (report_config.md mục 11); config phase 1: rounds 600,
+    # learning_rate 0.05, num_leaves 63, min_data_in_leaf 200, feature_fraction 0.8, bagging_fraction 0.7, lambda_l2 1.0
+    rounds: 200
     interval_rounds: 200    # q10/q90: model phân vị riêng
-    params: {learning_rate: 0.05, num_leaves: 63, min_data_in_leaf: 200, feature_fraction: 0.8,
-             bagging_fraction: 0.7, bagging_freq: 1, lambda_l2: 1.0, max_bin: 127, seed: 0}
+    params: {learning_rate: 0.0211, num_leaves: 163, min_data_in_leaf: 75, feature_fraction: 0.8395,
+             bagging_fraction: 0.967, bagging_freq: 1, lambda_l2: 0.00255, tweedie_variance_power: 1.6133,
+             max_bin: 127, seed: 0}
   tide:                     # plan §P6; neuralforecast, CPU. Early stopping giữ lại horizon ngày cuối trước gốc làm validation
     input_size: 56
     hidden_size: 512          # mặc định của TiDE; ghi ra để --set đổi được (--set chỉ nhận khóa có sẵn)
