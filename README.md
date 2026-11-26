@@ -22,7 +22,7 @@ python -m forecast_v2.cli train-final --models lgbm                             
 python -m forecast_v2.cli train-far                                             # dự báo từ hôm nay -> artifacts/lgbm_far/<giờ>/
 python -m forecast_v2.cli report                                                # -> runs/<giờ>_report/report.md
 python -m forecast_v2.cli evaluate --artifact artifacts/lgbm/<giờ>              # chấm bằng số thật snapshot mới -> eval_<snapshot>.md
-python dashboard/build_data.py                                                  # demo, đọc artifacts/lgbm_far mới nhất
+python dashboard/build_data.py                                                  # demo, đọc artifacts/lgbm mới nhất (train-final)
 ```
 
 Kết quả mới nhất: báo cáo `runs/*_report/report.md`, model `artifacts/lgbm/` (30 ngày sau ngày cuối có dữ liệu) và `artifacts/lgbm_far/` (từ hôm nay), dashboard `dashboard/index.html`. Lệnh đầy đủ và cờ khác: docstring của `src/forecast_v2/cli.py`.

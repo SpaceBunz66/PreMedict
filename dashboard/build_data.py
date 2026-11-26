@@ -1,7 +1,7 @@
 """Dữ liệu cho dashboard demo LightGBM (trong forecast_v2/, PYTHONPATH=src): python dashboard/build_data.py [artifact] -> dashboard/data.js
 
-Artifact mặc định: bản mới nhất của artifacts/lgbm_far (train-far, dự báo từ hôm nay dù dữ liệu thật dừng sớm hơn);
-truyền artifacts/lgbm/<run> để xem dự báo 30 ngày ngay sau ngày cuối có dữ liệu (train-final).
+Artifact mặc định: bản mới nhất của artifacts/lgbm (train-final, dự báo 30 ngày ngay sau ngày cuối có dữ liệu);
+truyền artifacts/lgbm_far/<run> để xem dự báo xa (train-far, khi dữ liệu thật dừng trước hôm nay).
 Thực tế: daily_2025/2026.parquet của snapshot trong manifest, chỉ các CSYT model dự báo, cộng qua ma_tinh như lúc train.
 Chỉ tiêu có dự báo: thực tế chỉ tính trên CSYT có dự báo chỉ tiêu đó (so cùng tập). Dự báo: forecast.csv (q10/q50/q90);
 bhyt, dung_tuyen, trai_tuyen suy ra từ dự báo tong theo tỉ lệ (DERIVED).
@@ -25,7 +25,7 @@ PROVINCES = {'01': 'Hà Nội', '12': 'Lai Châu', '22': 'Quảng Ninh', '24': '
              '44': 'Quảng Trị', '46': 'Huế', '66': 'Đắk Lắk', '79': 'TP. Hồ Chí Minh', '80': 'Tây Ninh', '96': 'Cà Mau'}
 
 sys.stdout.reconfigure(encoding='utf-8')  # console Windows mặc định cp1252: lỗi khi in tiếng Việt
-art = Path(sys.argv[1]) if len(sys.argv) > 1 else max((ROOT / 'artifacts' / 'lgbm_far').iterdir())
+art = Path(sys.argv[1]) if len(sys.argv) > 1 else max((ROOT / 'artifacts' / 'lgbm').glob('*/manifest.json')).parent
 man = json.loads((art / 'manifest.json').read_text(encoding='utf-8'))
 snap = ROOT / 'data' / man['snapshot']
 
