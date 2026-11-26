@@ -177,3 +177,9 @@ Chỉ đánh giá, không train (quy ước mục 1). Dự báo `artifacts/lgbm/
 - `facilities`: 345 CSYT (336 tập chặt); bán kính khí tượng 6 km: 325, 12 km: 20; hạng 4: 230, 3: 68, CH: 22, 2: 12, 1: 3, unknown: 10.
 - `weather` (chuẩn bị): mọi ô lưới ERA5-Land của 345 CSYT (bán kính 6 và 12 km) nằm trong khung đã tải `data/weather/22.8_103_8.3_109.7`, nên `weather` dùng lại khung này (`existing_area`) và chỉ tải thêm 08–11/2026 (`weather.end` = 2026-11; tháng hiện tại xin tới hôm nay − 6 ngày, file tải trước cuối tháng + 10 ngày sẽ được tải lại).
 - `weather` (25/11/2026): dùng lại khung [22,8; 103,0; 8,3; 109,7], chỉ tải 4 file 08–11/2026 (~20 phút, CDS có lỗi mạng nhưng tự thử lại). `weather_daily`: 345 CSYT × 2 bán kính, 02/12/2020 → **19/11/2026** (ngày 20–23/11 chưa có quan trắc), thiếu `t_mean` 0,29% = chỉ CSYT 45105 (BV Mắt Quảng Trị, thuộc tập chặt; tọa độ trong DB rơi vào ô biển gần đảo Cồn Cỏ, như snapshot cũ). `features` sẽ bỏ CSYT này nên tập train còn 335 CSYT chặt. Mưa khí hậu/quan trắc 0,93. Trùng khớp hoàn toàn với `weather_daily` cũ trên phần chung (488.048 dòng, lệch < 1e-13).
+
+## 11. Quyết định 26/11/2026 và Optuna trên snapshot prod 2026-11-25
+
+- **Người dùng chốt:** tạm giữ ERA5 (bộ feature A3 đầy đủ); bỏ hướng TiDE khỏi production (theo cổng A4, mục 4–5; code và kết quả giữ để tái lập báo cáo), theo đó bỏ luôn TFT. Chỉ còn LightGBM.
+- `features` dựng trên snapshot 2026-11-25 (tập chặt 336, bỏ CSYT 45105 thiếu khí tượng → 335).
+- Optuna chạy lại từ đầu, study riêng `lgbm_2026-11-25` trong `runs/optuna.db` (study `lgbm` cũ = snapshot 2026-11-18, mục 3; WAPE trên dữ liệu khác nhau không so được). Không gian tham số như A1 (chỉ tweedie), trial 0 = config hiện tại, 20 trial, 3 gốc validation giữ nguyên (15/01/2025, 30/09/2025, 30/11/2025) để so được với phase 1. Log `runs/tune_2026-11-25.log`, bảng `runs/optuna_lgbm_2026-11-25.csv`.

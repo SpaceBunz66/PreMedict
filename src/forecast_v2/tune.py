@@ -1,7 +1,7 @@
 """P8: Optuna cho LightGBM trên các gốc validation (plan §P8). Chỉ tune model q50 (điểm = WAPE gộp các gốc, điểm mask = 1);
 q10/q90 giữ tham số trong config. Gốc test không được dùng ở đây.
 
-Study lưu ở runs/optuna.db (SQLite): chạy lại cùng lệnh là chạy thêm --trials trial nối tiếp (kể cả sau khi tắt máy);
+Study lưu ở runs/optuna.db (SQLite), tên lgbm_<snapshot>: chạy lại cùng lệnh là chạy thêm --trials trial nối tiếp (kể cả sau khi tắt máy);
 --trials 0 chỉ in bảng hội tụ. Trial 0 của study mới = tham số hiện tại trong config, làm mốc so sánh.
 """
 import time
@@ -55,7 +55,8 @@ def wape(data, objective, rounds, params, bar=None):
 
 
 def run(snap, cfg, trials, smoke=False):
-    name = 'lgbm_smoke' if smoke else 'lgbm'
+    # mỗi snapshot một study: WAPE trên dữ liệu khác nhau không so được; study 'lgbm' cũ = snapshot 2026-11-18
+    name = f"{'lgbm_smoke' if smoke else 'lgbm'}_{snap.name}"
     c = cfg['models']['lgbm']
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     study = optuna.create_study(study_name=name, storage=f'sqlite:///{(ROOT / "runs" / "optuna.db").as_posix()}',
