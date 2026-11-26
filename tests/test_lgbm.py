@@ -63,7 +63,7 @@ def test_q50_not_sorted_into_interval(monkeypatch):
         def feature_importance(self, kind):
             return np.zeros(self.n)
     v = {0.5: 0.3, 0.1: 0.5, 0.9: 0.4}  # theo alpha: q50 < q90 < q10; sắp xếp: 0,3 · 0,4 · 0,5
-    monkeypatch.setattr(lgbm, '_fit', lambda X, y, w, objective, alpha, *a: Stub(v[alpha], X.shape[1]))
+    monkeypatch.setattr(lgbm, '_fit', lambda data, objective, alpha, *a: Stub(v[alpha], data.data.shape[1]))
     _, df, st, _ = build(False)
     out = lgbm.forecast(df, st, CUT, FAST)
     np.testing.assert_allclose(out.q10 / out.q50, 0.2 / 0.3)  # q50 0,3, khoảng 0,3 ∓ 0,1 (sắp xếp: q50 0,4)

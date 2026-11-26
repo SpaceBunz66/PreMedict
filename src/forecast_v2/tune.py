@@ -6,6 +6,7 @@ Study lưu ở runs/optuna.db (SQLite), tên lgbm_<snapshot>: chạy lại cùng
 """
 import time
 
+import lightgbm as lgb
 import numpy as np
 import optuna
 import pandas as pd
@@ -48,7 +49,8 @@ def folds(snap, cfg, smoke):
 def wape(data, objective, rounds, params, bar=None):
     err = tot = 0.0
     for Xt, yt, wt, Xp, lp, ya in data:
-        q = np.clip(lgbm._fit(Xt, yt, wt, objective, 0.5, params, rounds, bar).predict(Xp), 0, None) * lp
+        # Dataset mới mỗi trial: min_data_in_leaf đổi theo trial mà feature_pre_filter cố định khi dựng Dataset
+        q = np.clip(lgbm._fit(lgb.Dataset(Xt, yt, weight=wt), objective, 0.5, params, rounds, bar).predict(Xp), 0, None) * lp
         err += np.abs(q - ya).sum()
         tot += ya.sum()
     return err / tot

@@ -119,6 +119,7 @@ def final(snap, cfg, names):
     st, long, daily = load(snap, cfg)
     cutoff = long.ds[long.y.notna()].max()
     df, fs = features.fold(long, st, daily, cutoff, cfg)
+    del long, daily  # ~1 GB; train-final là bước tốn RAM nhất (8,9 triệu mẫu ở snapshot 2026-11-25)
     out = ROOT / 'artifacts' / 'lgbm' / f'{pd.Timestamp.now():%Y%m%d-%H%M%S}'
     out.mkdir(parents=True)
     t0 = time.perf_counter()

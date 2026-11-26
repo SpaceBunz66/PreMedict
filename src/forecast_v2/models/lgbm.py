@@ -82,15 +82,24 @@ def design(df, static, cutoff, horizon, step, drop=(), min_h=1):
         j = t - k
         return np.where(off[t] >= k, ym[np.clip(j, 0, None)], np.nan) / lv
     week = 7 * np.ceil(h / 7).astype(int)
-    target = [k for k in df if k not in NOT_TARGET and not k.startswith('w_')]
+    kept = lambda cols: [k for k in cols if not any(GROUPS[g](k) for g in drop)]
+    target = kept(k for k in df if k not in NOT_TARGET and not k.startswith('w_'))
     st = static.set_index('unique_id')[STATIC]
-    X = pd.concat([of.iloc[i].reset_index(drop=True).drop(columns='level'),
-                   df[target].iloc[t].reset_index(drop=True),
-                   st.loc[df.unique_id.to_numpy()[i]].reset_index(drop=True)], axis=1)
+    # lat/lon float64 làm LightGBM chuyển cả ma trận sang float64 (gấp đôi RAM); float32 lệch ~0,1 m
+    st = st.astype({k: 'float32' for k, d in st.dtypes.items() if d == 'float64'})
+    # Thêm từng cột thay pd.concat: concat chép và gộp khối (+4 GB tạm ở 7 triệu dòng × 86 cột), làm backtest
+    # snapshot prod hết RAM 15 GB. .array[...] lấy theo vị trí, giữ dtype (category), không căn theo index.
+    X = of[kept(of.columns.drop('level'))].iloc[i]
+    X.index = pd.RangeIndex(len(X))
+    for k in target:
+        X[k] = df[k].array[t]
+    s = st.index.get_indexer(df.unique_id)[i]
+    assert (s >= 0).all(), 'chuỗi thiếu trong static'
+    for k in STATIC:
+        X[k] = st[k].array[s]
     X['h'] = h.astype('float32')
     X['same_weekday'] = back(week).astype('float32')
     X['last_year'] = back(364 if 'holiday' in drop else last_year_shift(df)[t]).astype('float32')
-    X = X.drop(columns=[k for k in X if any(GROUPS[g](k) for g in drop)])
     for k in X:
         if X[k].dtype == object:
             X[k] = X[k].astype('category')
@@ -99,9 +108,9 @@ def design(df, static, cutoff, horizon, step, drop=(), min_h=1):
     return X, y, lv, ~pred, pred, df[['unique_id', 'ds']].iloc[t].reset_index(drop=True)
 
 
-def _fit(X, y, w, objective, alpha, params, rounds, bar=None):
+def _fit(data, objective, alpha, params, rounds, bar=None):
     p = params | {'objective': objective, 'verbosity': -1} | ({'alpha': alpha} if objective == 'quantile' else {})
-    return lgb.train(p, lgb.Dataset(X, y, weight=w), rounds, callbacks=[lambda env: bar.update()] if bar else None)
+    return lgb.train(p, data, rounds, callbacks=[lambda env: bar.update()] if bar else None)
 
 
 def forecast(df, static, cutoff, cfg, save_to=None):
@@ -109,11 +118,15 @@ def forecast(df, static, cutoff, cfg, save_to=None):
     c = cfg['models']['lgbm']
     X, y, lv, train, pred, keys = design(df, static, cutoff, cfg['features']['horizon'], c['origin_step'],
                                           cfg['features'].get('drop', ()), cfg['features'].get('min_h', 1))
-    Xt, yt, wt = X[train], y[train], lv[train]
+    Xp = X[pred]
+    # một Dataset cho cả 3 model (cùng tham số dataset): chuyển ma trận và chia bin một lần; bỏ X để không giữ hai bản
+    # (7 triệu dòng × 86 cột ở gốc 05/2026: các bản sao làm backtest hết RAM 15 GB)
+    data = lgb.Dataset(X[train], y[train], weight=lv[train])
+    del X
     with tqdm(total=c['rounds'] + 2 * c['interval_rounds'], desc='lgbm q50+q10+q90', unit='vòng', leave=False) as bar:
-        models = {'q50': _fit(Xt, yt, wt, c['objective'], 0.5, c['params'], c['rounds'], bar)} | {
-            f'q{round(a * 100)}': _fit(Xt, yt, wt, 'quantile', a, c['params'], c['interval_rounds'], bar) for a in (0.1, 0.9)}
-    q = np.column_stack([models[k].predict(X[pred]) for k in ('q10', 'q50', 'q90')])
+        models = {'q50': _fit(data, c['objective'], 0.5, c['params'], c['rounds'], bar)} | {
+            f'q{round(a * 100)}': _fit(data, 'quantile', a, c['params'], c['interval_rounds'], bar) for a in (0.1, 0.9)}
+    q = np.column_stack([models[k].predict(Xp) for k in ('q10', 'q50', 'q90')])
     q = np.clip(q, 0, None) * lv[pred, None]
     s = np.sort(q, axis=1)
     # q50 giữ của tweedie: ngày lễ q50 hay thấp hơn q10 (36% điểm lễ backtest), lấy trung vị 3 dự báo đẩy q50 lên mức
@@ -121,7 +134,7 @@ def forecast(df, static, cutoff, cfg, save_to=None):
     # (không chéo thì đúng bằng q10/q90 của model). Kẹp min/max thì phía dưới rộng 0, hệ số A5 thành inf.
     out = keys[pred].reset_index(drop=True).assign(q10=np.clip(q[:, 1] - (s[:, 1] - s[:, 0]), 0, None), q50=q[:, 1],
                                                     q90=q[:, 1] + (s[:, 2] - s[:, 1]))
-    out.attrs['importance'] = pd.Series(models['q50'].feature_importance('gain'), index=X.columns)
+    out.attrs['importance'] = pd.Series(models['q50'].feature_importance('gain'), index=Xp.columns)
     out.attrs['train_rows'] = int(train.sum())
     if save_to:
         for k, m in models.items():
