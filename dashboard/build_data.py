@@ -3,7 +3,8 @@
 Artifact mặc định: bản mới nhất của artifacts/lgbm_far (train-far, dự báo từ hôm nay dù dữ liệu thật dừng sớm hơn);
 truyền artifacts/lgbm/<run> để xem dự báo 30 ngày ngay sau ngày cuối có dữ liệu (train-final).
 Thực tế: daily_2025/2026.parquet của snapshot trong manifest, chỉ các CSYT model dự báo, cộng qua ma_tinh như lúc train.
-Chỉ tiêu có dự báo: thực tế chỉ tính trên CSYT có dự báo chỉ tiêu đó (so cùng tập). Dự báo: forecast.csv (q10/q50/q90).
+Chỉ tiêu có dự báo: thực tế chỉ tính trên CSYT có dự báo chỉ tiêu đó (so cùng tập). Dự báo: forecast.csv (q10/q50/q90);
+bhyt, dung_tuyen, trai_tuyen suy ra từ dự báo tong theo tỉ lệ (DERIVED).
 """
 import json
 import sys
@@ -18,6 +19,7 @@ ROOT = HERE.parent
 START = '2025-01-01'
 FIELDS = ['tong', 'luot_vao', 'luot_ra', 'luot_kham', 'noi_tru', 'ngoai_tru', 'cap_cuu', 'tu_vong', 'bhyt',
           'dung_tuyen', 'trai_tuyen', 'tn_gt', 'tn_ld', 'tn_dn', 'tn_nd', 'tn_bl', 'tn_tt', 'tn_bg', 'tn_k']
+DERIVED = ['bhyt', 'dung_tuyen', 'trai_tuyen']
 # shortcut: tên tỉnh theo mã sau sáp nhập 07/2025, gõ tay cho 12 tỉnh có trong tập chặt; mã lạ hiện "Tỉnh <mã>".
 PROVINCES = {'01': 'Hà Nội', '12': 'Lai Châu', '22': 'Quảng Ninh', '24': 'Bắc Ninh', '40': 'Nghệ An', '42': 'Hà Tĩnh',
              '44': 'Quảng Trị', '46': 'Huế', '66': 'Đắk Lắk', '79': 'TP. Hồ Chí Minh', '80': 'Tây Ninh', '96': 'Cà Mau'}
@@ -39,6 +41,14 @@ dates = pd.date_range(START, man['train_until'])
 daily = daily.set_index(['csyt_id', 'ds']).reindex(pd.MultiIndex.from_product([units.csyt_id, dates])).fillna(0)
 
 fdates = pd.date_range(*man['forecast'])
+# Chỉ tiêu suy ra (không train): dự báo tong × tỉ lệ field/tong trong 28 ngày có số liệu cuối của từng CSYT.
+# shortcut: tỉ lệ cố định qua khoảng trống; backtest 2025 lệch 0% bhyt, 7% dung_tuyen, 109% trai_tuyen theo CSYT
+# (chỉ ~20 CSYT ghi trái tuyến, bật/tắt thất thường). Cần số tin cậy cho từng CSYT thì phải train riêng.
+act = daily[daily.tong > 0].groupby(level=0).tail(28).groupby(level=0)
+ratio = act[DERIVED].sum().div(act.tong.sum(), axis=0)
+t = fc[(fc.field == 'tong') & fc.csyt_id.isin(ratio.index)]
+fc = pd.concat([fc, *(t.assign(field=f, **{q: t[q] * t.csyt_id.map(ratio[f]) for q in ('q10', 'q50', 'q90')})
+                      for f in DERIVED)])
 fc = fc.set_index(['csyt_id', 'field', 'ds']).sort_index()
 modeled = fc.index.droplevel('ds').unique()
 

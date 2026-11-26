@@ -73,8 +73,8 @@
     <div class="card"><h2>Theo dõi lượt khám theo ngày</h2><div class="chart" id="c1"></div></div>
     <div class="card"><h2>Theo dõi lượt ra/vào viện theo ngày</h2><div class="chart" id="c2"></div></div>
     <div class="card"><h2>Theo dõi điều trị nội / ngoại trú theo ngày</h2><div class="chart" id="c3"></div></div>
-    <div class="card"><h2>Theo dõi khám chữa bệnh sử dụng BHYT<em>chưa có dự báo</em></h2><div class="chart" id="c4"></div></div>
-    <div class="card"><h2>Theo dõi đúng tuyến và trái tuyến theo ngày<em>chưa có dự báo</em></h2><div class="chart" id="c5"></div></div>
+    <div class="card"><h2>Theo dõi khám chữa bệnh sử dụng BHYT<em>dự báo suy từ tổng hồ sơ</em></h2><div class="chart" id="c4"></div></div>
+    <div class="card"><h2>Theo dõi đúng tuyến và trái tuyến theo ngày<em>dự báo suy từ tổng hồ sơ; trái tuyến từng CSYT kém tin cậy</em></h2><div class="chart" id="c5"></div></div>
     <div class="card"><h2>Theo dõi tình hình tai nạn thương tích<em>chưa có dự báo</em></h2><div class="chart" id="c6"></div></div>
   </div>
 </div>
@@ -189,7 +189,7 @@ function options(V) {
   const kham = V.A('luot_kham'), fk = V.F('luot_kham'), lo = V.F('luot_kham', 'q10'), hi = V.F('luot_kham', 'q90');
   if (!GAP && V.last >= 0 && V.last < fk.length) fk[V.last] = kham[V.last];  // nối đường dự báo vào điểm thực tế cuối
   const none = { symbol: 'none', lineStyle: { opacity: 0 }, label: { show: false }, stack: 'ci', z: 1 };
-  const tong = V.A('tong'), bh = V.A('bhyt');
+  const tong = V.A('tong'), bh = V.A('bhyt'), ft = V.F('tong'), fb = V.F('bhyt');
   return [
     opt(V, [
       line('_lo', lo, P.f2, none),
@@ -211,10 +211,14 @@ function options(V) {
     opt(V, [
       line('Số hồ sơ có BHYT', bh, P.a1, { symbol: 'diamond', symbolSize: 8 }),
       line('Số hồ sơ không có BHYT', tong.map((t, i) => t == null ? null : t - bh[i]), P.a2, { symbol: 'diamond', symbolSize: 8 }),
+      dashed('Dự báo có BHYT', fb, P.f1, 'diamond'),
+      dashed('Dự báo không có BHYT', ft.map((t, i) => t == null ? null : t - fb[i]), P.f3, 'diamond'),
     ]),
     opt(V, [
       line('Lượt đúng tuyến', V.A('dung_tuyen'), P.a1, { symbol: 'diamond', symbolSize: 8 }),
       line('Lượt trái tuyến', V.A('trai_tuyen'), P.a2, { symbol: 'diamond', symbolSize: 8 }),
+      dashed('Dự báo đúng tuyến', V.F('dung_tuyen'), P.f1, 'diamond'),
+      dashed('Dự báo trái tuyến', V.F('trai_tuyen'), P.f3, 'diamond'),
     ]),
     opt(V, TN.map(([f, name], k) => line(name, V.A(f), TN_COLORS[k], { symbolSize: 5 }))),
   ];
