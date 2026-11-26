@@ -188,3 +188,22 @@ Chỉ đánh giá, không train (quy ước mục 1). Dự báo `artifacts/lgbm/
   - WAPE 0,288 không so được với 0,258 của snapshot cũ (mục 3): tập CSYT khác (335 so với 131, thêm 177 CSYT tuyến 4 nhỏ).
 - **Config mới (26/11/2026):** người dùng duyệt đưa trial 18 vào `configs/base.yaml` (rounds 200, các tham số trên; interval_rounds 200 giữ nguyên) và chạy tiếp backtest → calibrate → train-final trên snapshot 2026-11-25.
 - **Sửa RAM lgbm (26/11/2026):** backtest đầy đủ trên snapshot prod hai lần bị dừng vì máy hết RAM (15 GB) ở gốc 31/01 và 02/03/2026. Nguyên nhân: ma trận mẫu 7 triệu dòng × 86 cột bị chép nhiều lần (`pd.concat`, `X[train]`, mỗi model q10/q50/q90 chuyển lại sang float64 vì lat/lon float64). Sửa: lat/lon float32, dựng `X` từng cột, một `lgb.Dataset` cho cả 3 model. Đỉnh RAM gốc 01/05/2026 ~11 GB → 6,9 GB, train-final (8,9 triệu mẫu) 8,35 GB. Dự báo giống hệt bản cũ (lệch 0 trên dữ liệu smoke).
+- **Backtest snapshot prod** (`runs/20261126-170023_snaive7-mean4-lgbm-prophet_prod-prophet_clean`, config trial 18; 335 CSYT, 819 chuỗi tập chặt; gốc val/test như mục 2): lgbm 3–14 phút/gốc, Prophet ~1 phút/gốc. mean4 thiếu 15 điểm (chuỗi chưa đủ lịch sử), các model khác đủ.
+
+  | WAPE (val / test) | tổng | h 1–7 | h 8–14 | h 15–30 | Tết ±21 | tổng tỉnh × chỉ tiêu |
+  |---|---|---|---|---|---|---|
+  | **lgbm (trial 18)** | **0,280 / 0,264** | 0,211 / 0,238 | 0,294 / 0,245 | 0,301 / 0,292 | 0,298 / 0,343 | 0,183 / 0,164 |
+  | lgbm (config phase 1) | 0,287 / 0,271 | 0,212 / 0,238 | 0,294 / 0,257 | 0,313 / 0,301 | 0,312 / 0,377 | 0,189 / 0,163 |
+  | mean4 | 0,324 / 0,378 | | | | 0,576 / 0,594 | 0,225 / 0,299 |
+  | prophet_clean | 0,395 / 0,402 | | | | 0,634 / 0,591 | 0,299 / 0,310 |
+  | prophet_prod | 0,417 / 0,425 | | | | 0,649 / 0,596 | 0,327 / 0,338 |
+  | snaive7 | 0,374 / 0,562 | | | | 0,557 / 0,736 | 0,250 / 0,481 |
+
+  - Trial 18 tốt hơn config phase 1 cả trên test (−0,7 điểm, chủ yếu h ≥ 8 và Tết), không chỉ trên validation nơi nó được chọn. Run so sánh: `runs/20261126-185937_lgbm_cfg-phase1` (cùng code, chỉ đổi tham số).
+  - Khoảng tin cậy không kém đi dù q10/q90 dùng chung tham số mới: pinball 0,104 / 0,089 so với 0,106 / 0,090; cover80 trước hiệu chỉnh 0,757 / 0,765 so với 0,734 / 0,733.
+  - Wilcoxon so với ProphetProd: lgbm tốt hơn ở 97% chuỗi test, 87% chuỗi val (p < 1e-4).
+  - Theo chỉ tiêu (test): `tong` 0,245, `luot_kham` 0,249, `ngoai_tru` 0,394, `cap_cuu` 0,601, `noi_tru` 0,885 (snaive7 0,768: nội trú test vẫn yếu). Ngày lễ: lgbm 0,664 / 0,951, các baseline 7–17.
+  - Không so được với số phase 1 (mục 3, test 0,256): tập CSYT và dữ liệu khác.
+- **calibrate (A5)**: hệ số lo/hi theo h 1–7: 1,003 / 0,901; 8–14: 1,048 / 1,468; 15–30: 1,060 / 1,342. cover80 test 0,789 / 0,751 / 0,761 → 0,778 / 0,845 / 0,836 (val sau hiệu chỉnh 0,80).
+- **train-final**: `artifacts/lgbm/20261126-184100`, train tới 23/11/2026, dự báo 24/11 → 23/12/2026; 335 CSYT, 819 chuỗi, 8,89 triệu mẫu, 1.116 giây; git 0fd8988, `git_dirty` false; hệ số khoảng tin cậy từ backtest trên. Tổng q50 `tong` ngày thường 23–32 nghìn, cuối tuần ~3,2 nghìn.
+  - 24/11/2026 dự báo `tong` 1.355 vì lịch nghỉ (`holidays` 0.108) ghi "Ngày Văn hóa Việt Nam" 24/11 là ngày nghỉ quốc gia từ 2026. Dữ liệu khớp: 24/11 (đã qua trọn ngày) chỉ ~200 CSYT báo cáo, ít hơn cả ngày extract 25/11 (1.840, nạp dở), nên ở mục 8 và 10, 24/11 nhiều khả năng là ngày nghỉ chứ không phải trễ ETL. Đây là lần đầu có ngày nghỉ này: model dự báo như một ngày lễ quốc gia một ngày.
