@@ -75,10 +75,10 @@ models:
     random_seed: 0
 
 report:                     # A7: run trong runs/ dùng cho báo cáo tổng (lệnh report); sửa khi chạy lại backtest
-  main: 20261126-170023_snaive7-mean4-lgbm-prophet_prod-prophet_clean          # snapshot prod 2026-11-25, val + test
-  tide: []                  # TiDE và ablation chạy trên snapshot cũ 2026-11-18 (131 CSYT), không gộp được với main
-  ablation: {}
-  ablation_note: 'Chưa chạy lại trên snapshot prod. Kết quả phase 1 (snapshot 2026-11-18, 131 CSYT) ở phần tóm tắt (kết luận 3, 4) và báo cáo runs/20261123-170738_report.'
+  main: 20261127-110228_snaive7-mean4-lgbm-prophet_prod-prophet_clean          # snapshot prod 2026-11-25, A1 (không ERA5)
+  tide: []                  # TiDE chạy trên snapshot cũ 2026-11-18 (131 CSYT), không gộp được với main
+  ablation:                 # cùng snapshot, cùng code; bỏ holiday chưa chạy lại trên prod (phase 1: kết luận 3 phần tóm tắt)
+    'A3 + ERA5 (w_*, clim_*)': 20261126-170023_snaive7-mean4-lgbm-prophet_prod-prophet_clean
   tet_cutoff: '2026-01-31'  # biểu đồ Tết 2026 theo tuyến
   # Báo cáo phase 1 (runs/20261123-170738_report): main 20261123-161154_snaive7-mean4-lgbm-prophet_prod-prophet_clean,
   # tide [20261121-142639_tide_a3-s2000, 20261122-084951_tide_a3-s2000-test], ablation: bỏ w_* (giữ clim_*)
