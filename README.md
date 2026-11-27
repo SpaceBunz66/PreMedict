@@ -25,4 +25,13 @@ python -m forecast_v2.cli evaluate --artifact artifacts/lgbm/<giờ>            
 python dashboard/build_data.py                                                  # demo, đọc artifacts/lgbm mới nhất (train-final)
 ```
 
+**Job tải ERA5-Land hằng ngày** (`weather-crawl`): tải file thô vào `data/weather/<khung>/` tới hôm nay − 6 ngày (ERA5-Land trễ ~5 ngày), tải lại tháng chưa trọn, không ghi vào snapshot (`weather_daily` dựng bằng lệnh `weather` khi có snapshot mới, file đã tải thì bỏ qua). Trên laptop chạy bằng Task Scheduler, task `forecast_v2 weather-crawl` → `scripts/weather_crawl.cmd`, 09:00 hằng ngày (máy tắt lúc đó thì chạy khi bật lại), log nối vào `runs/weather_crawl.log`. Lỗi mạng/CDS: lần chạy sau tự tải tiếp.
+
+```
+Get-ScheduledTaskInfo 'forecast_v2 weather-crawl'                          # LastTaskResult 0 = thành công
+Start-ScheduledTask 'forecast_v2 weather-crawl'                            # chạy ngay
+Set-ScheduledTask 'forecast_v2 weather-crawl' -Trigger (New-ScheduledTaskTrigger -Daily -At '07:00')   # đổi giờ
+Unregister-ScheduledTask 'forecast_v2 weather-crawl' -Confirm:$false       # gỡ job
+```
+
 Kết quả mới nhất: báo cáo `runs/*_report/report.md`, model `artifacts/lgbm/` (30 ngày sau ngày cuối có dữ liệu) và `artifacts/lgbm_far/` (từ hôm nay), dashboard `dashboard/index.html`. Lệnh đầy đủ và cờ khác: docstring của `src/forecast_v2/cli.py`.

@@ -109,6 +109,7 @@ def by_radius(cell_daily, cells, weights):
 WEATHER_DIR = DATA_DIR / 'weather'
 ERA_VARS = ['2m_temperature', '2m_dewpoint_temperature', 'total_precipitation']
 KEYS = ['csyt_id', 'radius_km']
+ERA_LAG = pd.Timedelta(days=6)  # ERA5-Land trễ ~5 ngày: chỉ xin tới hôm nay - 6 ngày
 
 
 def area(fac, margin):
@@ -156,9 +157,9 @@ def download(a, c):
     d.mkdir(parents=True, exist_ok=True)
     common = {'variable': ERA_VARS, 'area': a, 'data_format': 'netcdf', 'download_format': 'unarchived'}
     jobs, ready = {}, {}
-    # ERA5-Land trễ ~5 ngày: tháng hiện tại chỉ xin tới hôm nay - 6 ngày; file tải trước cuối tháng + 10 ngày là tháng
-    # chưa trọn, chạy lại sẽ tải lại.
-    available = pd.Timestamp.today().normalize() - pd.Timedelta(days=6)
+    # Tháng hiện tại chỉ xin tới hôm nay - ERA_LAG; file tải trước cuối tháng + 10 ngày là tháng chưa trọn, chạy lại sẽ
+    # tải lại.
+    available = pd.Timestamp.today().normalize() - ERA_LAG
     for m in pd.period_range(c['start'], c['end'], freq='M'):
         last = min(m.days_in_month, (available - m.start_time).days + 1)
         if last < 1:
@@ -249,6 +250,19 @@ def derived(w, th):
         run = (~f).groupby([w.csyt_id, w.radius_km]).cumsum()
         w[name], w[f'{name}_days'] = f, f.astype(int).groupby([w.csyt_id, w.radius_km, run]).cumsum()  # số ngày liên tiếp
     return w
+
+
+def crawl(snap, cfg):
+    """Job tải định kỳ (scripts/weather_crawl.cmd): tải file thô tới ngày mới nhất ERA5-Land có, cùng khung với lệnh
+    weather của snapshot. Không ghi gì vào snapshot; weather_daily dựng lại bằng lệnh weather khi có snapshot mới."""
+    c = cfg['weather']
+    fac = pd.read_parquet(snap / 'facilities_static.parquet')
+    cells = cell_weights(fac, c['radii_km'])[['lat', 'lon']].drop_duplicates()
+    end = (pd.Timestamp.today().normalize() - ERA_LAG).to_period('M')
+    d = download(existing_area(cells) or area(fac, c['margin_deg']), c | {'end': str(end)})
+    with xr.open_dataset(d / f'hourly_{end}.nc') as ds:
+        last = pd.Timestamp(ds['valid_time' if 'valid_time' in ds.dims else 'time'].values.max())
+    print(f'{pd.Timestamp.now():%d/%m/%Y %H:%M} ERA5-Land có tới {last:%d/%m/%Y %H:%M} UTC trong {d}', flush=True)
 
 
 def run(snap, cfg):
