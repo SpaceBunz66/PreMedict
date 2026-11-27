@@ -22,7 +22,7 @@ STATIC = ['field', 'tuyen', 'hang', 'latitude', 'longitude', 'log_scale', 'weeke
 HOLIDAY = ['is_holiday', 'is_lam_bu', 'is_day_off', 'holiday_type', 'break_len', 'break_pos', 'days_to_break',
            'days_since_break', 'tet_offset', 'tet_pre', 'tet_post', 'lunar_day', 'lunar_month', 'lunar_leap', 'is_mung1',
            'is_ram', 'school_break', 'regional_holiday']
-GROUPS = {'holiday': lambda k: k in HOLIDAY, 'weather': lambda k: k.startswith('w_'),  # w_*: cần job tải ERA5 hằng ngày
+GROUPS = {'holiday': lambda k: k in HOLIDAY, 'weather': lambda k: k.startswith('w_'),  # production bỏ (base.yaml drop)
           'clim': lambda k: k.startswith('clim_')}
 
 
@@ -62,6 +62,9 @@ def design(df, static, cutoff, horizon, step, drop=(), min_h=1):
     drop: tên nhóm trong GROUPS (bỏ holiday thì last_year lùi đúng 364 ngày)."""
     if set(drop) - set(GROUPS):
         raise ValueError(f'Nhóm feature không có: {sorted(set(drop) - set(GROUPS))}; có: {sorted(GROUPS)}')
+    missing = [g for g in GROUPS if g not in drop and not any(map(GROUPS[g], df.columns))]
+    if missing:  # vd. snapshot không chạy bước weather mà config lại cần khí tượng: không train thiếu feature âm thầm
+        raise ValueError(f'Bảng feature không có cột nhóm {missing}: thêm vào features.drop hoặc chạy lại features')
     df = df.sort_values(['unique_id', 'ds']).reset_index(drop=True)
     of = origin_features(df)
     off = df.groupby('unique_id').cumcount().to_numpy()  # vị trí trong chuỗi

@@ -27,6 +27,11 @@ def cli_cfg(monkeypatch, *argv):
     return got['cfg']
 
 
+def test_drop_adds_to_config_drop(monkeypatch):
+    base = cli_cfg(monkeypatch, 'backtest', '--models', 'lgbm')['features']['drop']
+    assert cli_cfg(monkeypatch, 'backtest', '--models', 'lgbm', '--drop', 'holiday')['features']['drop'] == [*base, 'holiday']
+
+
 def test_set_only_existing_keys_on_tagged_backtest(monkeypatch):
     cfg = cli_cfg(monkeypatch, 'backtest', '--models', 'tide', '--set', 'models.tide.hidden_size=256',
                   '--set', 'backtest.test=[]', '--tag', 'a3')

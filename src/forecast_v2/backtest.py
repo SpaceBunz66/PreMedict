@@ -309,13 +309,15 @@ def thin_fallback(fc, df, cutoff, min_days=14):
     return fc, sorted(fc.unique_id[sel].unique())
 
 
-def run(snap, cfg, names, smoke=False, tag=''):
+def run(snap, cfg, names, smoke=False, tag='', ablation=()):
     unknown = set(names) - set(MODELS)
     if unknown:
         raise ValueError(f'Model chưa có: {sorted(unknown)}; có: {sorted(MODELS)}')
-    drop = cfg['features'].get('drop')  # ablation: tên run không khớp latest_runs nên không lẫn với run chính
+    drop = cfg['features'].get('drop')  # config + ablation
+    # ablation (--drop, bỏ thêm so với config): tên run không khớp latest_runs nên không lẫn với run chính
     out = ROOT / 'runs' / (f'{pd.Timestamp.now():%Y%m%d-%H%M%S}_{"-".join(names)}'
-                           f'{"_drop-" + "-".join(drop) if drop else ""}{"_" + tag if tag else ""}{"_smoke" if smoke else ""}')
+                           f'{"_drop-" + "-".join(ablation) if ablation else ""}{"_" + tag if tag else ""}'
+                           f'{"_smoke" if smoke else ""}')
     out.mkdir(parents=True)  # tạo trước khi tính: tên sai (vd. tag có ':') báo lỗi ngay, không mất nhiều giờ chạy
     b = cfg['backtest']
     st, long, daily = load(snap, cfg, smoke)

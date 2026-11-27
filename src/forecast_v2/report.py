@@ -10,6 +10,7 @@ import re
 
 import numpy as np
 import pandas as pd
+import yaml
 
 from forecast_v2 import metrics
 from forecast_v2.extract import ROOT
@@ -132,7 +133,8 @@ def run(cfg):
     sl = sl.rename(index={'True': 'có', 'False': 'không'}, level='group')
 
     rows = {}
-    for label, x in {'A3 đầy đủ (run chính)': r['main'], **r['ablation']}.items():
+    main_drop = yaml.safe_load((ROOT / 'runs' / r['main'] / 'config.yaml').read_text(encoding='utf-8'))['features'].get('drop')
+    for label, x in {f'run chính (bỏ: {", ".join(main_drop) if main_drop else "không"})': r['main'], **r['ablation']}.items():
         a = pd.read_parquet(ROOT / 'runs' / x / 'metrics.parquet').xs('lgbm', level='model')
         if rows:  # so với metrics.parquet của run chính (cùng cách chấm, trước khi lấy phần giao)
             assert a.loc[('tổng', '')].n.sort_index().equals(n_main), x

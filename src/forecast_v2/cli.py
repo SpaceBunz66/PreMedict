@@ -67,10 +67,12 @@ def main():
         d[last] = yaml.safe_load(value)
     snap = DATA_DIR / args.snapshot if args.snapshot else max(DATA_DIR.glob('20??-??-??'))
     if args.command == 'backtest':
-        cfg['features']['drop'] = [g for g in args.drop.split(',') if g]
-        if cfg['features']['drop'] and 'lgbm' not in args.models.split(','):
+        extra = [g for g in args.drop.split(',') if g]  # ablation: bỏ thêm so với features.drop của config
+        if extra and 'lgbm' not in args.models.split(','):
             p.error('--drop chỉ áp dụng cho lgbm')
-        backtest.run(snap, cfg, args.models.split(','), args.smoke, args.tag)
+        base = cfg['features'].get('drop') or []
+        cfg['features']['drop'] = [*base, *(g for g in extra if g not in base)]
+        backtest.run(snap, cfg, args.models.split(','), args.smoke, args.tag, extra)
         return
     if args.command == 'train-final':
         backtest.final(snap, cfg, args.models.split(','))

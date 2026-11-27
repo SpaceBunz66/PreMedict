@@ -42,9 +42,12 @@ def table(daily, report, static, weather, clim, cfg):
     """
     c, fe, fields = cfg['clean'], cfg['features'], cfg['fields']['direct']
     radius = static.radius_km.rename_axis('csyt_id').reset_index()
-    w = weather.merge(radius, on=['csyt_id', 'radius_km'])
-    has = w.groupby('csyt_id').t_mean.count() > 0
-    ids = has.index[has]  # bỏ CSYT không có khí tượng (vd. 45105 đảo Cồn Cỏ: toàn ô biển)
+    if weather is None:  # snapshot không chạy bước weather (production bỏ ERA5): không có cột w_*, clim_*
+        ids = static.index
+    else:
+        w = weather.merge(radius, on=['csyt_id', 'radius_km'])
+        has = w.groupby('csyt_id').t_mean.count() > 0
+        ids = has.index[has]  # bỏ CSYT không có khí tượng (vd. 45105 đảo Cồn Cỏ: toàn ô biển)
 
     last_day = clean.last_data_day(daily, c['last_day_min_share'])
     p = masked_panel(daily, ids, last_day, cfg)
@@ -55,12 +58,14 @@ def table(daily, report, static, weather, clim, cfg):
 
     g = g.join(calendar_vn.features(pd.date_range(g.ds.min(), g.ds.max())), on='ds')
     g['regional_holiday'] = calendar_vn.regional(g.ds, g.csyt_id.map(static.ma_tinh))
-    g['doy'] = g.ds.dt.dayofyear
-    g = g.merge(clim.merge(radius, on=['csyt_id', 'radius_km'])[['csyt_id', 'doy', *CLIM]], on=['csyt_id', 'doy'],
-                how='left').drop(columns='doy')
-    obs = w[['csyt_id', 'ds', *(k for k in w if k not in NOT_OBS)]]
-    obs = obs.assign(ds=obs.ds + pd.Timedelta(days=fe['weather_obs_delay_days']))
-    g = g.merge(obs.rename(columns=lambda k: k if k in ('csyt_id', 'ds') else f'w_{k}'), on=['csyt_id', 'ds'], how='left')
+    if weather is not None:
+        g['doy'] = g.ds.dt.dayofyear
+        g = g.merge(clim.merge(radius, on=['csyt_id', 'radius_km'])[['csyt_id', 'doy', *CLIM]], on=['csyt_id', 'doy'],
+                    how='left').drop(columns='doy')
+        obs = w[['csyt_id', 'ds', *(k for k in w if k not in NOT_OBS)]]
+        obs = obs.assign(ds=obs.ds + pd.Timedelta(days=fe['weather_obs_delay_days']))
+        g = g.merge(obs.rename(columns=lambda k: k if k in ('csyt_id', 'ds') else f'w_{k}'), on=['csyt_id', 'ds'],
+                    how='left')
 
     cov = [k for k in g if k not in cols]
     for k in cov:
@@ -107,10 +112,11 @@ def fold(df, static, daily, cutoff, cfg):
 def build(snap, cfg):
     """(daily thô, bảng long, static, ngày cuối có dữ liệu) từ các file của snapshot; bảng kéo dài horizon ngày."""
     daily, _ = clean.merge_provinces(clean.load_raw(snap))
+    has_weather = (snap / 'weather_daily.parquet').exists()  # không có: production bỏ ERA5, không chạy bước weather
+    read = lambda name: pd.read_parquet(snap / name) if has_weather else None
     return daily, *table(daily, pd.read_parquet(snap / 'quality_report.parquet'),
                          pd.read_parquet(snap / 'facilities_static.parquet'),
-                         pd.read_parquet(snap / 'weather_daily.parquet'),
-                         pd.read_parquet(snap / 'weather_clim.parquet'), cfg)
+                         read('weather_daily.parquet'), read('weather_clim.parquet'), cfg)
 
 
 def run(snap, cfg):
@@ -121,4 +127,6 @@ def run(snap, cfg):
     print(f'{st.csyt_id.nunique()} CSYT ({st[st.strict].csyt_id.nunique()} tập chặt), {len(st)} chuỗi '
           f'{st.field.value_counts().to_dict()}; {len(long):,} dòng × {long.shape[1]} cột tới '
           f'{long.ds.max():%d/%m/%Y} (ngày cuối có dữ liệu {last_day:%d/%m/%Y}); mask = 0 ở {1 - past.available_mask.mean():.1%} '
-          f'số dòng quá khứ; thiếu w_t_mean {past.w_t_mean.isna().mean():.2%}. Đã ghi {snap / "features.parquet"}')
+          f'số dòng quá khứ; '
+          + (f'thiếu w_t_mean {past.w_t_mean.isna().mean():.2%}' if 'w_t_mean' in past else 'không có khí tượng')
+          + f'. Đã ghi {snap / "features.parquet"}')

@@ -44,6 +44,8 @@ weather:
 features:
   horizon: 30
   weather_obs_delay_days: 5 # độ trễ thực tế của ERA5-Land (plan §P3); ablation D thử 1
+  drop: [weather, clim]     # người dùng chốt 27/11/2026: production không dùng ERA5 (bộ feature A1), ERA5 chỉ để báo cáo;
+                            # chạy lại A3 có ERA5: backtest --set features.drop=[] --tag era5 (snapshot phải có bước weather)
 
 backtest:                   # gốc = ngày cuối dùng để train; dự báo gốc+1..gốc+horizon (plan §P7)
   val: ['2025-01-15', '2025-09-30', '2025-11-30']                            # tuning; 15/01/2025 bao trọn Tết 2025

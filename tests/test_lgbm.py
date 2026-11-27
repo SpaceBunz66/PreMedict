@@ -7,8 +7,13 @@ pytest.importorskip('lightgbm')
 from forecast_v2.models import lgbm  # noqa: E402
 from test_no_leakage import CFG, CUT, build  # noqa: E402  (dùng lại dữ liệu tổng hợp của test leakage)
 
+# Tham số cố định, không theo Optuna: trial 18 (num_leaves 163, min_data_in_leaf 75) quá khớp 4 chuỗi tổng hợp (WAPE
+# 0,09–0,32 tùy lr, sai ở các thứ Sáu sau SPIKE) nên test học chuỗi tuần chỉ còn đo tham số, không đo code.
 FAST = CFG | {'models': {'lgbm': CFG['models']['lgbm'] | {
-    'rounds': 60, 'interval_rounds': 30, 'params': CFG['models']['lgbm']['params'] | {'deterministic': True, 'num_threads': 1}}}}
+    'rounds': 60, 'interval_rounds': 30,
+    'params': CFG['models']['lgbm']['params'] | {
+        'learning_rate': 0.1, 'num_leaves': 63, 'min_data_in_leaf': 200, 'feature_fraction': 0.8, 'bagging_fraction': 0.7,
+        'lambda_l2': 1.0, 'tweedie_variance_power': 1.5, 'deterministic': True, 'num_threads': 1}}}}
 H = CFG['features']['horizon']
 
 
@@ -45,7 +50,7 @@ def test_saved_models_reproduce_forecast(tmp_path):
     import lightgbm as lgb
     _, df, st, _ = build(False)
     out = lgbm.forecast(df, st, CUT, FAST, save_to=tmp_path)
-    X, _, lv, _, pred, _ = lgbm.design(df, st, CUT, H, FAST['models']['lgbm']['origin_step'])
+    X, _, lv, _, pred, _ = lgbm.design(df, st, CUT, H, FAST['models']['lgbm']['origin_step'], FAST['features']['drop'])
     q = np.column_stack([lgb.Booster(model_file=tmp_path / f'lgbm_{k}.txt').predict(X[pred]) for k in ('q10', 'q50', 'q90')])
     q = np.clip(q, 0, None) * lv[pred, None]
     s = np.sort(q, axis=1)
@@ -91,3 +96,20 @@ def test_drop_feature_groups():
     assert np.isclose(X.last_year[row] * lv[row], df.set_index(['unique_id', 'ds']).y[('a|tong', d - pd.Timedelta(days=364))])
     with pytest.raises(ValueError):
         lgbm.design(df, st, CUT, H, 2, drop=('nope',))
+
+
+def test_no_weather_snapshot_equals_dropped_weather():
+    """Production bỏ ERA5: snapshot không có bước weather cho đúng ma trận như bỏ nhóm weather, clim ở snapshot có khí
+    tượng; config còn cần khí tượng thì báo lỗi thay vì train thiếu feature."""
+    from forecast_v2 import features
+    from test_no_leakage import inputs
+    daily, report, static, _, _ = inputs(False)
+    long, st, _ = features.table(daily, report, static, None, None, CFG)
+    assert not any(k.startswith(('w_', 'clim_')) for k in long)
+    df, fs = features.fold(long, st, daily, CUT, CFG)
+    with pytest.raises(ValueError, match='weather'):
+        lgbm.design(df, fs, CUT, H, 2)
+    _, dw, sw, _ = build(False)
+    for a, b in zip(lgbm.design(df, fs, CUT, H, 2, drop=('weather', 'clim')),
+                    lgbm.design(dw, sw, CUT, H, 2, drop=('weather', 'clim'))):
+        (pd.testing.assert_frame_equal if isinstance(a, pd.DataFrame) else np.testing.assert_array_equal)(a, b)
