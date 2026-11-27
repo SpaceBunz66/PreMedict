@@ -12,7 +12,7 @@ Mục tiêu: dự báo 30 ngày tới số lượt khám mỗi ngày của 5 ch�
    - Theo tuyến (test): tuyến 3 0,242, tuyến 2 0,297, tuyến 4 0,299 (236 CSYT nhỏ, chiếm 60% số điểm). Tuyến 4 dự báo thiếu đợt tăng trước Tết (09–13/02/2026: thực tế ~8 nghìn/ngày, q50 ~6 nghìn).
 2. **Lợi ích chủ yếu đến từ model, không phải từ làm sạch dữ liệu.** Cùng Prophet nhưng chạy trên dữ liệu đã làm sạch (prophet_clean) chỉ giảm WAPE test 2,3 điểm (0,402). Đổi sang LightGBM giảm thêm 13,8 điểm.
 3. **Lịch lễ Tết Việt Nam là feature quyết định.** Nhóm lễ, Tết, âm lịch chiếm 51% gain của LightGBM; riêng `is_day_off` chiếm 46%. Ngày lễ: WAPE test 0,95 so với 15–17 của Prophet. Ablation phase 1 (snapshot cũ, 131 CSYT): bỏ nhóm này làm WAPE kém 6,7 điểm trên validation, 8,2 điểm trên test.
-4. **Khí tượng ERA5 đóng góp rất nhỏ.** Khí tượng quan trắc chiếm 0,4% gain, khí hậu 1,0%. Ablation phase 1: đủ bộ feature so với bỏ cả `w_*` lẫn `clim_*` chênh dưới 0,3 điểm và đổi dấu giữa validation và test. Người dùng chốt (26/11/2026) tạm giữ ERA5; chưa chạy lại ablation trên snapshot prod.
+4. **Khí tượng ERA5 đóng góp rất nhỏ.** Khí tượng quan trắc chiếm 0,4% gain, khí hậu 1,0%. Ablation phase 1: đủ bộ feature so với bỏ cả `w_*` lẫn `clim_*` chênh dưới 0,3 điểm và đổi dấu giữa validation và test. Người dùng chốt (27/11/2026): **production bỏ ERA5** (bộ feature A1: lịch + lễ Tết), ERA5 chỉ giữ trong báo cáo.
 5. **Tham số Optuna mới (trial 18).** Tune lại trên snapshot prod: validation 0,2882 → 0,2803. Xác nhận trên test với cùng code, chỉ đổi tham số: 0,271 → 0,264, tốt hơn chủ yếu ở h ≥ 8 và quanh Tết (0,377 → 0,343).
 6. **Bỏ TiDE và TFT khỏi production** theo cổng A4 (phase 1): TiDE s2000 WAPE validation 0,299, test 0,273, kém LightGBM, hỏng ở ngày lễ và chậm gấp khoảng 11 lần; trộn với LightGBM không giúp. Người dùng chốt 26/11/2026.
 7. **Khoảng tin cậy 80% đã hiệu chỉnh (A5).** Độ phủ trên test tăng từ 0,765 lên 0,825 sau khi giãn khoảng theo hệ số fit trên validation.
@@ -21,7 +21,6 @@ Mục tiêu: dự báo 30 ngày tới số lượt khám mỗi ngày của 5 ch�
 ## Còn chờ quyết định
 
 - **Pha production (§8 plan):** dự báo cấp tỉnh (cộng dồn từ CSYT hay giữ Prophet cũ), chuyển đổi (tắt service cũ hay chạy song song), và fallback cho CSYT ngoài tập chặt (đang chọn tạm giữ Prophet).
-- **Bỏ ERA5 hay không:** bỏ thì production không cần job tải khí tượng hằng ngày, tài khoản CDS và độ trễ 5 ngày; cần chạy lại ablation trên snapshot prod trước khi chốt.
 
 ## Hạn chế và việc còn lại
 

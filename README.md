@@ -1,6 +1,6 @@
 # forecast_v2
 
-Dự báo lượt khám 30 ngày cho CSYT. Đọc DB chỉ đọc, làm sạch, ghép khí tượng ERA5-Land và lịch lễ, rồi backtest và train LightGBM. TiDE và Prophet chỉ để so sánh.
+Dự báo lượt khám 30 ngày cho CSYT. Đọc DB chỉ đọc, làm sạch, ghép lịch lễ, rồi backtest và train LightGBM. Khí tượng ERA5-Land, TiDE và Prophet chỉ để so sánh trong báo cáo: production không dùng ERA5 (`features.drop` trong `configs/base.yaml`).
 
 | Thư mục | Nội dung |
 |---|---|
@@ -15,7 +15,7 @@ Dự báo lượt khám 30 ngày cho CSYT. Đọc DB chỉ đọc, làm sạch, 
 Cài đặt: `.venv-ml` theo `requirements-ml.txt`, rồi `pip install -e .`. Kết nối DB lấy từ `.env` (DB production; `extract --env <file>` để đọc DB khác, vd. `.env.devtest`), tải ERA5 dùng `.cdsapirc`.
 
 ```
-python -m forecast_v2.cli extract | quality | facilities | weather | features   # dựng snapshot trong data/
+python -m forecast_v2.cli extract | quality | facilities | weather | features   # dựng snapshot trong data/; weather chỉ cần cho báo cáo
 python -m forecast_v2.cli backtest --models snaive7,mean4,lgbm                  # -> runs/<giờ>_<model>/metrics.md
 python -m forecast_v2.cli calibrate --models lgbm                               # A5: hệ số khoảng tin cậy
 python -m forecast_v2.cli train-final --models lgbm                             # -> artifacts/lgbm/<giờ>/
