@@ -9,8 +9,7 @@
        python -m forecast_v2.cli calibrate --models lgbm,tide   # A5: hệ số khoảng tin cậy từ run backtest mới nhất
        python -m forecast_v2.cli report                         # A7: báo cáo tổng từ các run trong base.yaml (report)
        python -m forecast_v2.cli evaluate --artifact artifacts/lgbm/20261123-165545 [--snapshot YYYY-MM-DD]
-                                                                # chấm dự báo của artifact bằng số thật của snapshot
-       python -m forecast_v2.cli weather-crawl   # job hằng ngày: tải ERA5-Land thô tới hôm nay - 6 ngày, không đụng snapshot"""
+                                                                # chấm dự báo của artifact bằng số thật của snapshot"""
 import argparse
 import sys
 
@@ -25,8 +24,7 @@ def main():
         stream.reconfigure(encoding='utf-8')  # stderr: thanh tiến độ tqdm
     p = argparse.ArgumentParser(prog='forecast_v2')
     p.add_argument('command', choices=['extract', 'quality', 'facilities', 'weather', 'features', 'backtest',
-                                        'train-final', 'train-far', 'tune', 'calibrate', 'report', 'evaluate',
-                                        'weather-crawl'])
+                                        'train-final', 'train-far', 'tune', 'calibrate', 'report', 'evaluate'])
     p.add_argument('--snapshot', help='thư mục con của data/; mặc định: hôm nay (extract), mới nhất (quality)')
     p.add_argument('--config', default=ROOT / 'configs' / 'base.yaml')
     p.add_argument('--models', default='snaive7,mean4', help='backtest: tên model, cách nhau bởi dấu phẩy')
@@ -90,9 +88,6 @@ def main():
     if args.command == 'report':
         from forecast_v2 import report  # matplotlib + lightgbm: chỉ import khi cần
         report.run(cfg)
-        return
-    if args.command == 'weather-crawl':
-        weather.crawl(snap, cfg)
         return
     {'quality': quality, 'facilities': facilities, 'weather': weather, 'features': features}[args.command].run(snap, cfg)
 
