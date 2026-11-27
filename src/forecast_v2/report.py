@@ -2,7 +2,7 @@
 
 Run dùng cho báo cáo ghi ở mục `report` của configs/base.yaml. Phần tóm tắt (docs/report_summary.md) và phụ lục thiết
 lập (docs/report_config.md) viết tay; phần kết quả tính lại từ forecasts.parquet của các run, mọi model chấm trên cùng
-tập điểm mask = 1 (assert). Không có TFT (chưa làm) và RAM (chưa đo).
+tập điểm mask = 1 (phần giao các model). Không có TFT (chưa làm) và RAM (chưa đo).
 """
 import ast
 import json
@@ -70,6 +70,8 @@ def tet_chart(e, cutoff, path):
         y = x.xs('lgbm', level='model').y  # y như nhau ở mọi model (cùng tập điểm)
         ax.plot(y.index, y, color=INK, lw=2, label='thực tế')
         for mdl, c in SERIES.items():
+            if mdl not in set(d.model):
+                continue
             q = x.xs(mdl, level='model').q50
             ax.plot(q.index, q, color=c, lw=2, label=mdl)
         ax.axvline(tet, color=MUTED, lw=1, ls='--')
@@ -98,6 +100,11 @@ def run(cfg):
     e = pd.concat([pd.read_parquet(ROOT / 'runs' / x / 'forecasts.parquet').assign(run=x) for x in runs],
                   ignore_index=True)
     e = e[(e.available_mask > 0) & e.q50.notna()]
+    key = ['unique_id', 'cutoff', 'ds']
+    assert not e.duplicated([*key, 'model']).any(), 'một model có trong nhiều run (trùng run)'
+    full = e.groupby(key).model.transform('size') == e.model.nunique()
+    dropped = (~full).groupby(e.model).sum()
+    e = e[full]  # chấm trên phần giao: mean4 thiếu điểm ở chuỗi chưa đủ lịch sử
     m = metrics.report(e)
     tot = m.loc['tổng'].droplevel('group')
     n = tot.n.unstack('model')
@@ -127,10 +134,15 @@ def run(cfg):
     rows = {}
     for label, x in {'A3 đầy đủ (run chính)': r['main'], **r['ablation']}.items():
         a = pd.read_parquet(ROOT / 'runs' / x / 'metrics.parquet').xs('lgbm', level='model')
-        assert a.loc[('tổng', '')].n.sort_index().equals(tot.xs('lgbm', level='model').n.sort_index()), x
+        if rows:  # so với metrics.parquet của run chính (cùng cách chấm, trước khi lấy phần giao)
+            assert a.loc[('tổng', '')].n.sort_index().equals(n_main), x
+        else:
+            n_main = a.loc[('tổng', '')].n.sort_index()
         rows[label] = {'WAPE val': a.loc[('tổng', '', 'val')].wape, 'WAPE test': a.loc[('tổng', '', 'test')].wape,
                        'Tết ±21 test': a.loc[('Tết ±21 ngày', 'True', 'test')].wape}
     abl = pd.DataFrame(rows).T.rename_axis('biến thể')
+    abl_md = (['## Ablation nhóm feature LightGBM (A2)', '', table(abl), ''] if r['ablation'] else
+              ['## Ablation nhóm feature LightGBM (A2)', '', r.get('ablation_note', 'Không có run ablation.'), ''])
 
     imp = pd.read_parquet(ROOT / 'runs' / r['main'] / 'importance.parquet')
     share = imp[(imp.model == 'lgbm') & (imp.set == 'val')].groupby('feature').share.mean().sort_values(ascending=False)
@@ -150,10 +162,12 @@ def run(cfg):
         f'# Báo cáo forecast_v2: dự báo 30 ngày, {csyt} CSYT, {e.unique_id.nunique()} chuỗi', '',
         f'Sinh {pd.Timestamp.now():%d/%m/%Y %H:%M} bằng `python -m forecast_v2.cli report`. Run: '
         + ', '.join(f'`{x}`' for x in runs) + f'. Mọi model chấm trên cùng {n.loc["val"].iloc[0]:,} điểm validation và '
-        f'{n.loc["test"].iloc[0]:,} điểm test (mask = 1).'.replace(',', '.'), '',
+        f'{n.loc["test"].iloc[0]:,} điểm test (mask = 1'.replace(',', '.')
+        + (f'; bỏ {dropped.max()} điểm có model thiếu dự báo' if dropped.any() else '') + ').', '',
         doc('report_summary.md'),
         '## Bảng xếp hạng', '',
-        'Sắp theo WAPE validation (tiêu chí chọn model); test chỉ để báo cáo. tide = cấu hình s2000 (A3). cover80 = tỉ lệ '
+        'Sắp theo WAPE validation (tiêu chí chọn model); test chỉ để báo cáo.'
+        + (' tide = cấu hình s2000 (A3).' if r['tide'] else '') + ' cover80 = tỉ lệ '
         'y nằm trong [q10, q90], mục tiêu 0,80; "sau A5" = hệ số khoảng tin cậy fit trên validation rồi áp cho test.', '',
         table(board), '',
         '## So với ProphetProd (Wilcoxon ghép cặp theo chuỗi)', '',
@@ -167,8 +181,7 @@ def run(cfg):
         '![Tết theo tuyến](tet_tuyen.png)', '',
         'Cộng trên các CSYT của tuyến, chỉ các điểm mask = 1 (như nhau ở mọi đường). Đường đứt: mùng 1 Tết. Số liệu: dòng '
         '"Tết ±21 ngày" và "tuyến" ở bảng lát cắt.', '',
-        '## Ablation nhóm feature LightGBM (A2)', '',
-        table(abl), '',
+        *abl_md,
         '## Feature importance LightGBM (tỉ lệ gain, trung bình các gốc validation)', '',
         table(groups.to_frame()), '',
         'Top 15 feature:', '',
