@@ -20,7 +20,7 @@ Mục tiêu: dự báo 30 ngày tới số lượt khám mỗi ngày của 5 ch�
 
 ## Còn chờ quyết định
 
-- **Pha production (§8 plan):** dự báo cấp tỉnh (cộng dồn từ CSYT hay giữ Prophet cũ), chuyển đổi (tắt service cũ hay chạy song song), và fallback cho CSYT ngoài tập chặt (đang chọn tạm giữ Prophet).
+- **Pha production (§8 plan):** dự báo cấp tỉnh (cộng dồn từ CSYT hay giữ Prophet cũ), chuyển đổi (tắt service cũ hay chạy song song), CSYT ngoài tập chặt: người dùng chốt 27/11/2026 giữ Prophet cũ.
 
 ## Hạn chế và việc còn lại
 
@@ -29,7 +29,7 @@ Mục tiêu: dự báo 30 ngày tới số lượt khám mỗi ngày của 5 ch�
 - `noi_tru`, `cap_cuu` và `ngoai_tru` là các chuỗi nhỏ và nhiễu: WAPE test của LightGBM là 0,88, 0,60 và 0,39; với `noi_tru`, snaive7 (0,77) còn tốt hơn.
 - 24/11/2026 (Ngày Văn hóa Việt Nam) lần đầu là ngày nghỉ theo lịch `holidays` 0.108; model dự báo như một ngày lễ quốc gia, dữ liệu prod khớp. Cần kiểm tra lại khi có số thật.
 - Chưa làm:
-  - A6: kiểm tra trên tầng nới và quy tắc fallback cho CSYT thiếu dữ liệu;
+  - A6: kiểm tra trên tầng nới (CSYT ngoài tập chặt dùng Prophet cũ, người dùng chốt 27/11/2026);
   - ablation bỏ nhóm lễ Tết (A2) trên snapshot prod (mới chạy lại phần ERA5);
   - service production (§8 plan), `WRITE_DB` tắt;
   - TFT (bỏ theo A4).
